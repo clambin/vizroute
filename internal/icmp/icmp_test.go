@@ -37,3 +37,20 @@ func TestSocket_Ping_IPv6(t *testing.T) {
 	_, _, err = s.Read(ctx)
 	assert.NoError(t, err)
 }
+
+func TestTransport_String(t *testing.T) {
+	tests := []struct {
+		name string
+		tp   Transport
+		want string
+	}{
+		{name: "IPv4", tp: IPv4, want: "ipv4"},
+		{name: "IPv6", tp: IPv6, want: "ipv6"},
+		{name: "unknown", tp: -1, want: "unknown"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, tt.tp.String())
+		})
+	}
+}
