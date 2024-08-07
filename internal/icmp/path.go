@@ -51,7 +51,7 @@ func (p *Path) Ping(ctx context.Context, s *Socket, l *slog.Logger) {
 			if hops := p.Hops(); i < len(hops) {
 				if h := hops[i]; h != nil {
 					if err := p.pingHop(ctx, h, s, seq); err != nil {
-						l.Warn("ping failed: %v", err)
+						l.Warn("ping failed", "err", err)
 					}
 				}
 				i = (i + 1) % len(hops)
