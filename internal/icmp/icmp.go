@@ -32,7 +32,6 @@ func (tp Transport) String() string {
 }
 
 type Socket struct {
-	OnReply func(net.IP, icmp.Type)
 	v4      *icmp.PacketConn
 	v6      *icmp.PacketConn
 	logger  *slog.Logger
@@ -74,8 +73,10 @@ func (s *Socket) socket(ip net.IP) (*icmp.PacketConn, Transport, error) {
 	tp := getTransport(ip)
 	switch tp {
 	case IPv4:
+		s.logger.Debug("selecting IPv4 socket")
 		return s.v4, tp, nil
 	case IPv6:
+		s.logger.Debug("selecting IPv6 socket")
 		return s.v6, tp, nil
 	default:
 		return nil, 0, fmt.Errorf("icmp socket does not support %s", tp)
@@ -103,6 +104,41 @@ func (s *Socket) Read(ctx context.Context) (net.IP, icmp.Type, error) {
 	defer cancel()
 
 	ch := make(chan response)
+
+	for {
+		if s.v4 != nil {
+			go func() {
+				if resp, ok, _ := s.readPacket(s.v4, IPv4); ok {
+					ch <- resp
+				}
+			}()
+		}
+		if s.v6 != nil {
+			go func() {
+				if resp, ok, _ := s.readPacket(s.v6, IPv6); ok {
+					ch <- resp
+				}
+			}()
+		}
+		select {
+		case resp := <-ch:
+			if isPingResponse(resp.msgType) {
+				return resp.from, resp.msgType, nil
+			}
+		case <-subCtx.Done():
+			if s.v4 != nil {
+				return nil, ipv4.ICMPTypeTimeExceeded, subCtx.Err()
+			}
+			return nil, ipv6.ICMPTypeTimeExceeded, subCtx.Err()
+		}
+	}
+}
+
+func (s *Socket) ReadOld(ctx context.Context) (net.IP, icmp.Type, error) {
+	subCtx, cancel := context.WithTimeout(ctx, s.Timeout)
+	defer cancel()
+
+	ch := make(chan response)
 	if s.v4 != nil {
 		go func() {
 			resp, ok, _ := s.readPacket(s.v4, IPv4)
@@ -119,14 +155,20 @@ func (s *Socket) Read(ctx context.Context) (net.IP, icmp.Type, error) {
 			}
 		}()
 	}
-	select {
-	case <-subCtx.Done():
-		if s.v4 != nil {
-			return nil, ipv4.ICMPTypeTimeExceeded, subCtx.Err()
+	for {
+		select {
+		case <-subCtx.Done():
+			if s.v4 != nil {
+				return nil, ipv4.ICMPTypeTimeExceeded, subCtx.Err()
+			}
+			return nil, ipv6.ICMPTypeTimeExceeded, subCtx.Err()
+		case resp := <-ch:
+			if isPingResponse(resp.msgType) {
+				return resp.from, resp.msgType, nil
+			} else {
+				s.logger.Debug("discarding packet: wrong type", "type", resp.msgType)
+			}
 		}
-		return nil, ipv6.ICMPTypeTimeExceeded, subCtx.Err()
-	case resp := <-ch:
-		return resp.from, resp.msgType, nil
 	}
 }
 
@@ -148,11 +190,11 @@ func (s *Socket) readPacket(c *icmp.PacketConn, tp Transport) (response, bool, e
 		return response{}, false, fmt.Errorf("parse: %w", err)
 	}
 	s.logger.Debug("packet received", "from", from.(*net.UDPAddr).IP, "packet", messageLogger(*msg))
-	if !isPingResponse(msg.Type) {
-		s.logger.Debug("discarding unsupported ICMP type", "type", msg.Type)
-		return response{}, false, nil
-	}
-	return response{from: from.(*net.UDPAddr).IP, msgType: msg.Type, body: msg.Body}, true, nil
+	return response{
+		from:    from.(*net.UDPAddr).IP,
+		msgType: msg.Type,
+		body:    msg.Body,
+	}, true, nil
 }
 
 func (s *Socket) Resolve(host string) (net.IP, error) {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"github.com/clambin/vizroute/internal/icmp"
 	"github.com/clambin/vizroute/internal/ui"
@@ -12,24 +13,35 @@ import (
 	"time"
 )
 
+var (
+	ipv6 = flag.Bool("6", false, "Use IPv6")
+)
+
 var a *tview.Application
 
 func main() {
+	flag.Parse()
+
+	var tp = icmp.IPv4
+	if *ipv6 {
+		tp = icmp.IPv6
+	}
 	l := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
-	s := icmp.New(icmp.IPv4, l)
+	s := icmp.New(tp, l)
 	s.Timeout = time.Second
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 
-	if len(os.Args) == 1 {
+	if flag.NArg() != 1 {
 		_, _ = fmt.Fprintf(os.Stderr, "Usage: traceroute <host>\n")
 		os.Exit(1)
 	}
 
-	addr, err := s.Resolve(os.Args[1])
+	addr, err := s.Resolve(flag.Arg(0))
 	if err != nil {
-		panic(err)
+		_, _ = fmt.Fprintf(os.Stderr, "Error resolving host %q: %s\n", flag.Arg(0), err)
+		os.Exit(1)
 	}
 	var p icmp.Path
 

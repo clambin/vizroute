@@ -5,6 +5,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"log/slog"
+	"os"
 	"testing"
 	"time"
 )
@@ -41,9 +42,10 @@ func TestPath_Discover_And_Ping_IPv4(t *testing.T) {
 }
 
 func TestPath_Discover_And_Ping_IPv6(t *testing.T) {
-	t.Skip("broken")
+	//t.Skip("broken")
 
-	l := slog.Default()
+	//l := slog.Default()
+	l := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	s := New(IPv6, l)
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -58,7 +60,7 @@ func TestPath_Discover_And_Ping_IPv6(t *testing.T) {
 	ch := make(chan struct{})
 	go func() { path.Ping(ctx, s, l); ch <- struct{}{} }()
 
-	assert.Eventually(t, func() bool {
+	require.Eventually(t, func() bool {
 		hops := path.Hops()
 		if len(hops) != 1 {
 			return false

@@ -30,7 +30,7 @@ func (p *Path) Discover(ctx context.Context, s *Socket, addr net.IP) error {
 			p.Add(int(ttl), from)
 		}
 		seq++
-		if msgType == ipv4.ICMPTypeEchoReply {
+		if msgType == ipv4.ICMPTypeEchoReply || msgType == ipv6.ICMPTypeEchoReply {
 			break
 		}
 	}
@@ -41,7 +41,7 @@ func (p *Path) Ping(ctx context.Context, s *Socket, l *slog.Logger) {
 	var i int
 	var seq uint16
 
-	ticker := time.NewTicker(250 * time.Millisecond)
+	ticker := time.NewTicker(100 * time.Millisecond)
 
 	for {
 		select {
