@@ -104,18 +104,17 @@ func (s *Socket) Read(ctx context.Context) (net.IP, icmp.Type, error) {
 	defer cancel()
 
 	ch := make(chan response)
-
 	for {
 		if s.v4 != nil {
 			go func() {
-				if resp, ok, _ := s.readPacket(s.v4, IPv4); ok {
+				if resp, err := s.readPacket(s.v4, IPv4); err == nil {
 					ch <- resp
 				}
 			}()
 		}
 		if s.v6 != nil {
 			go func() {
-				if resp, ok, _ := s.readPacket(s.v6, IPv6); ok {
+				if resp, err := s.readPacket(s.v6, IPv6); err == nil {
 					ch <- resp
 				}
 			}()
@@ -134,45 +133,7 @@ func (s *Socket) Read(ctx context.Context) (net.IP, icmp.Type, error) {
 	}
 }
 
-func (s *Socket) ReadOld(ctx context.Context) (net.IP, icmp.Type, error) {
-	subCtx, cancel := context.WithTimeout(ctx, s.Timeout)
-	defer cancel()
-
-	ch := make(chan response)
-	if s.v4 != nil {
-		go func() {
-			resp, ok, _ := s.readPacket(s.v4, IPv4)
-			if ok {
-				ch <- resp
-			}
-		}()
-	}
-	if s.v6 != nil {
-		go func() {
-			resp, ok, _ := s.readPacket(s.v6, IPv6)
-			if ok {
-				ch <- resp
-			}
-		}()
-	}
-	for {
-		select {
-		case <-subCtx.Done():
-			if s.v4 != nil {
-				return nil, ipv4.ICMPTypeTimeExceeded, subCtx.Err()
-			}
-			return nil, ipv6.ICMPTypeTimeExceeded, subCtx.Err()
-		case resp := <-ch:
-			if isPingResponse(resp.msgType) {
-				return resp.from, resp.msgType, nil
-			} else {
-				s.logger.Debug("discarding packet: wrong type", "type", resp.msgType)
-			}
-		}
-	}
-}
-
-func (s *Socket) readPacket(c *icmp.PacketConn, tp Transport) (response, bool, error) {
+func (s *Socket) readPacket(c *icmp.PacketConn, tp Transport) (response, error) {
 	if err := c.SetReadDeadline(time.Now().Add(s.Timeout)); err != nil {
 		s.logger.Warn("failed to set deadline", "err", err)
 	}
@@ -183,18 +144,18 @@ func (s *Socket) readPacket(c *icmp.PacketConn, tp Transport) (response, bool, e
 		if errors.As(err, &terr) && terr.Timeout() {
 			err = nil
 		}
-		return response{}, false, err
+		return response{}, err
 	}
 	msg, err := echoReply(rb[:count], tp)
 	if err != nil {
-		return response{}, false, fmt.Errorf("parse: %w", err)
+		return response{}, fmt.Errorf("parse: %w", err)
 	}
 	s.logger.Debug("packet received", "from", from.(*net.UDPAddr).IP, "packet", messageLogger(*msg))
 	return response{
 		from:    from.(*net.UDPAddr).IP,
 		msgType: msg.Type,
 		body:    msg.Body,
-	}, true, nil
+	}, nil
 }
 
 func (s *Socket) Resolve(host string) (net.IP, error) {
