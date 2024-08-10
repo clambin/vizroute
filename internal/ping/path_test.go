@@ -1,7 +1,8 @@
-package icmp
+package ping
 
 import (
 	"context"
+	"github.com/clambin/vizroute/internal/icmp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"log/slog"
@@ -13,7 +14,7 @@ import (
 func TestPath_Discover_And_Ping_IPv4(t *testing.T) {
 	//l := slog.Default()
 	l := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	s := New(IPv4, l)
+	s := icmp.New(icmp.IPv4, l)
 	ctx, cancel := context.WithCancel(context.Background())
 
 	addr, err := s.Resolve("localhost")
@@ -52,7 +53,7 @@ func TestPath_Discover_And_Ping_IPv6(t *testing.T) {
 
 	//l := slog.Default()
 	l := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	s := New(IPv6, l)
+	s := icmp.New(icmp.IPv6, l)
 	ctx, cancel := context.WithCancel(context.Background())
 
 	addr, err := s.Resolve("localhost")

@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/clambin/vizroute/internal/icmp"
+	"github.com/clambin/vizroute/internal/ping"
 	"github.com/clambin/vizroute/internal/ui"
 	"github.com/rivo/tview"
 	"log/slog"
@@ -43,14 +44,14 @@ func main() {
 		_, _ = fmt.Fprintf(os.Stderr, "Error resolving host %q: %s\n", flag.Arg(0), err)
 		os.Exit(1)
 	}
-	var p icmp.Path
 
+	var p ping.Path
 	go func() {
 		if err = p.Discover(ctx, s, addr); err != nil {
 			panic(err)
 		}
 		// can't do multiple pings in parallel, so wait for Discovery to end before pinging hops
-		p.Ping(ctx, s, l)
+		_ = p.Ping(ctx, s, l)
 	}()
 
 	table := &ui.RefreshingTable{Table: tview.NewTable(), Path: &p}

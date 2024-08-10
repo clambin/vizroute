@@ -1,8 +1,9 @@
-package icmp
+package ping
 
 import (
 	"context"
 	"fmt"
+	icmp2 "github.com/clambin/vizroute/internal/icmp"
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
@@ -19,7 +20,7 @@ type Path struct {
 	lock sync.RWMutex
 }
 
-func (p *Path) Discover(ctx context.Context, s *Socket, addr net.IP) error {
+func (p *Path) Discover(ctx context.Context, s *icmp2.Socket, addr net.IP) error {
 	var seq uint16
 	var ttl uint8
 	for {
@@ -44,7 +45,7 @@ type icmpResponse struct {
 	Seq uint16
 }
 
-func (p *Path) Ping(ctx context.Context, s *Socket, l *slog.Logger) error {
+func (p *Path) Ping(ctx context.Context, s *icmp2.Socket, l *slog.Logger) error {
 	pingers := make(map[string]chan icmpResponse)
 	for _, hop := range p.hops {
 		if hop != nil && hop.Addr().String() != "" {
@@ -78,7 +79,7 @@ func (p *Path) Ping(ctx context.Context, s *Socket, l *slog.Logger) error {
 	return g.Wait()
 }
 
-func (p *Path) pingHop(ctx context.Context, h *Hop, s *Socket, ch chan icmpResponse) error {
+func (p *Path) pingHop(ctx context.Context, h *Hop, s *icmp2.Socket, ch chan icmpResponse) error {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	var seq uint16

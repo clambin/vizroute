@@ -1,7 +1,7 @@
 package ui
 
 import (
-	"github.com/clambin/vizroute/internal/icmp"
+	"github.com/clambin/vizroute/internal/ping"
 	"github.com/rivo/tview"
 	"net"
 	"strconv"
@@ -9,7 +9,7 @@ import (
 
 type RefreshingTable struct {
 	*tview.Table
-	*icmp.Path
+	*ping.Path
 }
 
 func (t *RefreshingTable) Refresh() {

@@ -1,7 +1,7 @@
 package ui
 
 import (
-	"github.com/clambin/vizroute/internal/icmp"
+	"github.com/clambin/vizroute/internal/ping"
 	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
 	"net"
@@ -10,7 +10,7 @@ import (
 )
 
 func TestRefreshingTable_Refresh(t *testing.T) {
-	var path icmp.Path
+	var path ping.Path
 	path.Add(1, net.ParseIP("192.168.0.1")).Measurement(true, time.Second)
 	//path.Add(2, nil)
 	path.Add(3, net.ParseIP("192.168.0.2")).Measurement(true, 2*time.Second)
