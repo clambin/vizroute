@@ -141,7 +141,8 @@ func (s *Socket) readPacket(c *icmp.PacketConn, tp Transport) (response, error) 
 	if err := c.SetReadDeadline(time.Now().Add(s.Timeout)); err != nil {
 		s.logger.Warn("failed to set deadline", "err", err)
 	}
-	rb := make([]byte, 1500)
+	const maxPacketSize = 1500
+	rb := make([]byte, maxPacketSize)
 	count, from, err := c.ReadFrom(rb)
 	if err != nil {
 		var terr net.Error

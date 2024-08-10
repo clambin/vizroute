@@ -86,3 +86,52 @@ func TestPath_Discover_And_Ping_IPv6(t *testing.T) {
 	assert.Equal(t, 1.0, path.Hops()[0].Availability())
 	assert.NotZero(t, path.Hops()[0].Latency())
 }
+
+func TestPath_MaxLatency(t *testing.T) {
+	type hop struct {
+		hop     int
+		latency time.Duration
+	}
+	tests := []struct {
+		name string
+		hops []hop
+		want time.Duration
+	}{
+		{
+			name: "empty",
+			hops: nil,
+			want: 0,
+		},
+		{
+			name: "not empty",
+			hops: []hop{
+				{hop: 1, latency: 1000 * time.Millisecond},
+				{hop: 2, latency: 1500 * time.Millisecond},
+				{hop: 3, latency: 1200 * time.Millisecond},
+			},
+			want: 1500 * time.Millisecond,
+		},
+		{
+			name: "missing hop",
+			hops: []hop{
+				{hop: 1, latency: 1000 * time.Millisecond},
+				{hop: 2, latency: 0},
+				{hop: 3, latency: 1200 * time.Millisecond},
+			},
+			want: 1200 * time.Millisecond,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var p Path
+			for _, h := range tt.hops {
+				hop := p.Add(h.hop, nil)
+				if h.latency > 0 {
+					hop.Measurement(true, h.latency)
+				}
+			}
+			assert.Equal(t, tt.want, p.MaxLatency())
+		})
+	}
+}
