@@ -99,7 +99,7 @@ type response struct {
 	body    icmp.MessageBody
 }
 
-func (s *Socket) Read(ctx context.Context) (net.IP, icmp.Type, error) {
+func (s *Socket) Read(ctx context.Context) (net.IP, icmp.Type, uint16, error) {
 	subCtx, cancel := context.WithTimeout(ctx, s.Timeout)
 	defer cancel()
 
@@ -121,14 +121,18 @@ func (s *Socket) Read(ctx context.Context) (net.IP, icmp.Type, error) {
 		}
 		select {
 		case resp := <-ch:
+			var seq uint16
+			if body, ok := resp.body.(*icmp.Echo); ok {
+				seq = uint16(body.Seq)
+			}
 			if isPingResponse(resp.msgType) {
-				return resp.from, resp.msgType, nil
+				return resp.from, resp.msgType, seq, nil
 			}
 		case <-subCtx.Done():
 			if s.v4 != nil {
-				return nil, ipv4.ICMPTypeTimeExceeded, subCtx.Err()
+				return nil, ipv4.ICMPTypeTimeExceeded, 0, subCtx.Err()
 			}
-			return nil, ipv6.ICMPTypeTimeExceeded, subCtx.Err()
+			return nil, ipv6.ICMPTypeTimeExceeded, 0, subCtx.Err()
 		}
 	}
 }

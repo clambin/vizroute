@@ -3,8 +3,10 @@ package icmp
 import (
 	"context"
 	"fmt"
+	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
+	"golang.org/x/sync/errgroup"
 	"log/slog"
 	"net"
 	"slices"
@@ -25,54 +27,78 @@ func (p *Path) Discover(ctx context.Context, s *Socket, addr net.IP) error {
 		if err := s.Ping(addr, seq, ttl, []byte("payload")); err != nil {
 			return fmt.Errorf("ping: %w", err)
 		}
-		from, msgType, err := s.Read(ctx)
+		from, msgType, _, err := s.Read(ctx)
 		if err == nil {
 			p.Add(int(ttl), from)
 		}
-		seq++
 		if msgType == ipv4.ICMPTypeEchoReply || msgType == ipv6.ICMPTypeEchoReply {
 			break
 		}
+		seq++
 	}
 	return nil
 }
 
-func (p *Path) Ping(ctx context.Context, s *Socket, l *slog.Logger) {
-	var i int
-	var seq uint16
+type icmpResponse struct {
+	icmp.Type
+	Seq uint16
+}
 
-	ticker := time.NewTicker(100 * time.Millisecond)
+func (p *Path) Ping(ctx context.Context, s *Socket, l *slog.Logger) error {
+	pingers := make(map[string]chan icmpResponse)
+	for _, hop := range p.hops {
+		if hop != nil && hop.Addr().String() != "" {
+			pingers[hop.Addr().String()] = make(chan icmpResponse)
+		}
+	}
 
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			if hops := p.Hops(); i < len(hops) {
-				if h := hops[i]; h != nil {
-					if err := p.pingHop(ctx, h, s, seq); err != nil {
-						l.Warn("ping failed", "err", err)
+	var g errgroup.Group
+	g.Go(func() error {
+		for {
+			select {
+			case <-ctx.Done():
+				return nil
+			default:
+				if from, msgType, seq, err := s.Read(ctx); err == nil {
+					l.Debug("packet received", "from", from.String(), "seq", seq)
+					if ch, ok := pingers[from.String()]; ok {
+						ch <- icmpResponse{Type: msgType, Seq: seq}
 					}
 				}
-				i = (i + 1) % len(hops)
+			}
+		}
+	})
+	for _, hop := range p.hops {
+		if hop != nil {
+			if ch, ok := pingers[hop.Addr().String()]; ok {
+				g.Go(func() error { return p.pingHop(ctx, hop, s, ch) })
 			}
 		}
 	}
+	return g.Wait()
 }
 
-func (p *Path) pingHop(ctx context.Context, h *Hop, s *Socket, seq uint16) error {
-	if h == nil {
-		return nil
-	}
-	if addr := h.Addr(); addr != nil {
-		start := time.Now()
-		if err := s.Ping(addr, seq, 255, []byte("payload")); err != nil {
-			return fmt.Errorf("pingHop: %w", err)
+func (p *Path) pingHop(ctx context.Context, h *Hop, s *Socket, ch chan icmpResponse) error {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	var seq uint16
+	var start time.Time
+	for {
+		select {
+		case <-ticker.C:
+			start = time.Now()
+			seq++
+			if err := s.Ping(h.Addr(), seq, 255, []byte("payload")); err != nil {
+				return fmt.Errorf("ping: %w", err)
+			}
+		case resp := <-ch:
+			if resp.Seq == seq {
+				h.Measurement(resp.Type == ipv4.ICMPTypeEchoReply || resp.Type == ipv6.ICMPTypeEchoReply, time.Since(start))
+			}
+		case <-ctx.Done():
+			return nil
 		}
-		_, msgType, err := s.Read(ctx)
-		h.Measurement(err == nil && (msgType == ipv4.ICMPTypeEchoReply || msgType == ipv6.ICMPTypeEchoReply), time.Since(start))
 	}
-	return nil
 }
 
 func (p *Path) MaxLatency() time.Duration {

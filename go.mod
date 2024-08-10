@@ -8,6 +8,7 @@ require (
 	github.com/rivo/tview v0.0.0-20240807095714-a8dd8799d63b
 	github.com/stretchr/testify v1.9.0
 	golang.org/x/net v0.28.0
+	golang.org/x/sync v0.8.0
 )
 
 require (

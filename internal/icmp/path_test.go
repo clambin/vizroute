@@ -11,7 +11,8 @@ import (
 )
 
 func TestPath_Discover_And_Ping_IPv4(t *testing.T) {
-	l := slog.Default()
+	//l := slog.Default()
+	l := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	s := New(IPv4, l)
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -24,15 +25,20 @@ func TestPath_Discover_And_Ping_IPv4(t *testing.T) {
 	assert.Len(t, path.Hops(), 1)
 
 	ch := make(chan struct{})
-	go func() { path.Ping(ctx, s, l); ch <- struct{}{} }()
+	go func() {
+		if err := path.Ping(ctx, s, l); err != nil {
+			panic(err)
+		}
+		ch <- struct{}{}
+	}()
 
-	assert.Eventually(t, func() bool {
+	require.Eventually(t, func() bool {
 		hops := path.Hops()
 		if len(hops) != 1 {
 			return false
 		}
 		return hops[0].Availability() == 1
-	}, time.Second, time.Millisecond)
+	}, 5*time.Second, time.Millisecond)
 
 	cancel()
 	<-ch
@@ -58,7 +64,12 @@ func TestPath_Discover_And_Ping_IPv6(t *testing.T) {
 	assert.Len(t, path.Hops(), 1)
 
 	ch := make(chan struct{})
-	go func() { path.Ping(ctx, s, l); ch <- struct{}{} }()
+	go func() {
+		if err := path.Ping(ctx, s, l); err != nil {
+			panic(err)
+		}
+		ch <- struct{}{}
+	}()
 
 	require.Eventually(t, func() bool {
 		hops := path.Hops()
@@ -66,7 +77,7 @@ func TestPath_Discover_And_Ping_IPv6(t *testing.T) {
 			return false
 		}
 		return hops[0].Availability() == 1
-	}, time.Second, time.Millisecond)
+	}, 5*time.Second, time.Millisecond)
 
 	cancel()
 	<-ch

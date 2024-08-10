@@ -19,7 +19,7 @@ func TestSocket_Ping_IPv4(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	_, _, err = s.Read(ctx)
+	_, _, _, err = s.Read(ctx)
 	assert.NoError(t, err)
 }
 
@@ -34,7 +34,7 @@ func TestSocket_Ping_IPv6(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	_, _, err = s.Read(ctx)
+	_, _, _, err = s.Read(ctx)
 	assert.NoError(t, err)
 }
 
