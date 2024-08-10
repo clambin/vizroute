@@ -54,3 +54,52 @@ func TestTransport_String(t *testing.T) {
 		})
 	}
 }
+
+func TestSocket_Resolve(t *testing.T) {
+	tests := []struct {
+		name    string
+		tp      Transport
+		addr    string
+		want    string
+		wantErr assert.ErrorAssertionFunc
+	}{
+		{
+			name:    "IPv4",
+			tp:      IPv4,
+			addr:    "localhost",
+			want:    "127.0.0.1",
+			wantErr: assert.NoError,
+		},
+		{
+			name:    "IPv6",
+			tp:      IPv6,
+			addr:    "localhost",
+			want:    "::1",
+			wantErr: assert.NoError,
+		},
+		{
+			name:    "IPv6 not supported",
+			tp:      IPv4,
+			addr:    "::1",
+			want:    "<nil>",
+			wantErr: assert.Error,
+		},
+		{
+			name:    "invalid hostname",
+			tp:      IPv4,
+			addr:    "",
+			want:    "<nil>",
+			wantErr: assert.Error,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			s := New(tt.tp, slog.Default())
+			addr, err := s.Resolve(tt.addr)
+			assert.Equal(t, tt.want, addr.String())
+			tt.wantErr(t, err)
+		})
+	}
+}

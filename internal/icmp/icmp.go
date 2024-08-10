@@ -85,10 +85,10 @@ func (s *Socket) socket(ip net.IP) (*icmp.PacketConn, Transport, error) {
 
 func (s *Socket) setTTL(ttl uint8) (err error) {
 	if s.v4 != nil {
-		err = errors.Join(err, s.v4.IPv4PacketConn().SetTTL(int(ttl)))
+		err = s.v4.IPv4PacketConn().SetTTL(int(ttl))
 	}
 	if s.v6 != nil {
-		err = errors.Join(s.v6.IPv6PacketConn().SetHopLimit(int(ttl)))
+		err = errors.Join(err, s.v6.IPv6PacketConn().SetHopLimit(int(ttl)))
 	}
 	return err
 }
