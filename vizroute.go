@@ -47,11 +47,9 @@ func main() {
 
 	var p ping.Path
 	go func() {
-		if err = p.Discover(ctx, s, addr); err != nil {
+		if err = p.Run(ctx, s, addr, l); err != nil {
 			panic(err)
 		}
-		// can't do multiple pings in parallel, so wait for Discovery to end before pinging hops
-		_ = p.Ping(ctx, s, l)
 	}()
 
 	table := &ui.RefreshingTable{Table: tview.NewTable(), Path: &p}

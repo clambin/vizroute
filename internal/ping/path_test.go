@@ -12,9 +12,8 @@ import (
 )
 
 func TestPath_Discover_And_Ping_IPv4(t *testing.T) {
-	//l := slog.Default()
 	l := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	s := icmp.New(icmp.IPv4, l)
+	s := icmp.New(icmp.IPv4, l.With("socket", "ipv4"))
 	ctx, cancel := context.WithCancel(context.Background())
 
 	addr, err := s.Resolve("localhost")
@@ -22,38 +21,27 @@ func TestPath_Discover_And_Ping_IPv4(t *testing.T) {
 	assert.Equal(t, "127.0.0.1", addr.String())
 
 	var path Path
-	require.NoError(t, path.Discover(ctx, s, addr))
-	assert.Len(t, path.Hops(), 1)
-
-	ch := make(chan struct{})
+	ch := make(chan error)
 	go func() {
-		if err := path.Ping(ctx, s, l); err != nil {
-			panic(err)
-		}
-		ch <- struct{}{}
+		ch <- path.Run(ctx, s, addr, l)
 	}()
 
 	require.Eventually(t, func() bool {
-		hops := path.Hops()
-		if len(hops) != 1 {
-			return false
+		if hops := path.Hops(); len(hops) == 1 {
+			return hops[0].Availability() == 1
 		}
-		return hops[0].Availability() == 1
+		return false
 	}, 5*time.Second, time.Millisecond)
 
 	cancel()
-	<-ch
-
+	assert.NoError(t, <-ch)
 	assert.Equal(t, 1.0, path.Hops()[0].Availability())
 	assert.NotZero(t, path.Hops()[0].Latency())
 }
 
 func TestPath_Discover_And_Ping_IPv6(t *testing.T) {
-	//t.Skip("broken")
-
-	//l := slog.Default()
 	l := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	s := icmp.New(icmp.IPv6, l)
+	s := icmp.New(icmp.IPv6, l.With("socket", "ipv6"))
 	ctx, cancel := context.WithCancel(context.Background())
 
 	addr, err := s.Resolve("localhost")
@@ -61,28 +49,20 @@ func TestPath_Discover_And_Ping_IPv6(t *testing.T) {
 	assert.Equal(t, "::1", addr.String())
 
 	var path Path
-	require.NoError(t, path.Discover(ctx, s, addr))
-	assert.Len(t, path.Hops(), 1)
-
-	ch := make(chan struct{})
+	ch := make(chan error)
 	go func() {
-		if err := path.Ping(ctx, s, l); err != nil {
-			panic(err)
-		}
-		ch <- struct{}{}
+		ch <- path.Run(ctx, s, addr, l)
 	}()
 
 	require.Eventually(t, func() bool {
-		hops := path.Hops()
-		if len(hops) != 1 {
-			return false
+		if hops := path.Hops(); len(hops) == 1 {
+			return hops[0].Availability() == 1
 		}
-		return hops[0].Availability() == 1
+		return false
 	}, 5*time.Second, time.Millisecond)
 
 	cancel()
-	<-ch
-
+	assert.NoError(t, <-ch)
 	assert.Equal(t, 1.0, path.Hops()[0].Availability())
 	assert.NotZero(t, path.Hops()[0].Latency())
 }

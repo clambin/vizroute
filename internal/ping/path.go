@@ -20,16 +20,28 @@ type Path struct {
 	lock sync.RWMutex
 }
 
-func (p *Path) Discover(ctx context.Context, s *icmp2.Socket, addr net.IP) error {
+func (p *Path) Run(ctx context.Context, s *icmp2.Socket, addr net.IP, l *slog.Logger) error {
+	l.Debug("discovering hops")
+	if err := p.Discover(ctx, s, addr, l); err != nil {
+		return fmt.Errorf("discover: %w", err)
+	}
+	l.Debug("pinging hops", "count", len(p.Hops()))
+	return p.Ping(ctx, s, l)
+}
+
+func (p *Path) Discover(ctx context.Context, s *icmp2.Socket, addr net.IP, l *slog.Logger) error {
 	var seq uint16
 	var ttl uint8
+	payload := make([]byte, 56)
+	// TODO: only go to max TTL (config option)
 	for {
 		ttl++
-		if err := s.Ping(addr, seq, ttl, []byte("payload")); err != nil {
+		if err := s.Ping(addr, seq, ttl, payload); err != nil {
 			return fmt.Errorf("ping: %w", err)
 		}
 		from, msgType, _, err := s.Read(ctx)
 		if err == nil {
+			l.Debug("hop discovered", "addr", from, "ttl", ttl)
 			p.Add(int(ttl), from)
 		}
 		if msgType == ipv4.ICMPTypeEchoReply || msgType == ipv6.ICMPTypeEchoReply {
@@ -46,36 +58,38 @@ type response struct {
 }
 
 func (p *Path) Ping(ctx context.Context, s *icmp2.Socket, l *slog.Logger) error {
-	pingers := make(map[string]chan response)
+	hops := make(map[string]chan response)
 	for _, hop := range p.hops {
 		if hop != nil && hop.Addr().String() != "" {
-			pingers[hop.Addr().String()] = make(chan response)
+			hops[hop.Addr().String()] = make(chan response)
 		}
 	}
 
 	var g errgroup.Group
-	g.Go(func() error { return p.handleResponses(ctx, s, pingers, l) })
+	g.Go(func() error { return p.handleHopResponses(ctx, s, hops, l) })
 	for _, hop := range p.hops {
 		if hop != nil {
-			if ch, ok := pingers[hop.Addr().String()]; ok {
-				g.Go(func() error { return p.pingHop(ctx, hop, s, ch) })
+			if ch, ok := hops[hop.Addr().String()]; ok {
+				g.Go(func() error { return p.pingHop(ctx, hop, s, ch, l) })
 			}
 		}
 	}
 	return g.Wait()
 }
 
-func (p *Path) pingHop(ctx context.Context, h *Hop, s *icmp2.Socket, ch chan response) error {
+func (p *Path) pingHop(ctx context.Context, h *Hop, s *icmp2.Socket, ch chan response, l *slog.Logger) error {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	var seq uint16
 	var start time.Time
+	payload := make([]byte, 56)
 	for {
 		select {
 		case <-ticker.C:
 			start = time.Now()
 			seq++
-			if err := s.Ping(h.Addr(), seq, 255, []byte("payload")); err != nil {
+			l.Debug("pinging hop", "addr", h.Addr(), "seq", seq)
+			if err := s.Ping(h.Addr(), seq, 255, payload); err != nil {
 				return fmt.Errorf("ping: %w", err)
 			}
 		case resp := <-ch:
@@ -88,15 +102,15 @@ func (p *Path) pingHop(ctx context.Context, h *Hop, s *icmp2.Socket, ch chan res
 	}
 }
 
-func (p *Path) handleResponses(ctx context.Context, s *icmp2.Socket, pingers map[string]chan response, l *slog.Logger) error {
+func (p *Path) handleHopResponses(ctx context.Context, s *icmp2.Socket, hops map[string]chan response, l *slog.Logger) error {
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
 		default:
 			if from, msgType, seq, err := s.Read(ctx); err == nil {
-				l.Debug("packet received", "from", from.String(), "seq", seq)
-				if ch, ok := pingers[from.String()]; ok {
+				l.Debug("response received", "from", from.String(), "type", msgType, "seq", seq)
+				if ch, ok := hops[from.String()]; ok {
 					ch <- response{msgType: msgType, seq: seq}
 				}
 			}

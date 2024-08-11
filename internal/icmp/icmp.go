@@ -73,10 +73,10 @@ func (s *Socket) socket(ip net.IP) (*icmp.PacketConn, Transport, error) {
 	tp := getTransport(ip)
 	switch tp {
 	case IPv4:
-		s.logger.Debug("selecting IPv4 socket")
+		//s.logger.Debug("selecting IPv4 socket")
 		return s.v4, tp, nil
 	case IPv6:
-		s.logger.Debug("selecting IPv6 socket")
+		//s.logger.Debug("selecting IPv6 socket")
 		return s.v6, tp, nil
 	default:
 		return nil, 0, fmt.Errorf("icmp socket does not support %s", tp)
@@ -155,6 +155,11 @@ func (s *Socket) readPacket(c *icmp.PacketConn, tp Transport) (response, error) 
 	if err != nil {
 		return response{}, fmt.Errorf("parse: %w", err)
 	}
+	// TODO: this may not work inside a container: packet ID's seem to get overwritten
+	if echo, ok := msg.Body.(*icmp.Echo); ok && echo.ID != id() {
+		s.logger.Warn("discarding packet with invalid IP", "from", from, "id", echo.ID)
+		return response{}, errors.New("not my packet")
+	}
 	s.logger.Debug("packet received", "from", from.(*net.UDPAddr).IP, "packet", messageLogger(*msg))
 	return response{
 		from:    from.(*net.UDPAddr).IP,
@@ -197,7 +202,7 @@ func echoRequest(tp Transport, seq uint16, payload []byte) icmp.Message {
 		Type: echoRequestTypes[tp],
 		Code: 0,
 		Body: &icmp.Echo{
-			ID:   os.Getpid() & 0xffff,
+			ID:   id(),
 			Seq:  int(seq),
 			Data: payload,
 		},
@@ -218,4 +223,8 @@ func echoReply(data []byte, tp Transport) (*icmp.Message, error) {
 func isPingResponse(msgType icmp.Type) bool {
 	return msgType == ipv4.ICMPTypeEchoReply || msgType == ipv6.ICMPTypeEchoReply ||
 		msgType == ipv4.ICMPTypeTimeExceeded || msgType == ipv6.ICMPTypeTimeExceeded
+}
+
+func id() int {
+	return os.Getpid() & 0xffff
 }
