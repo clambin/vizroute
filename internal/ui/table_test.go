@@ -11,9 +11,9 @@ import (
 
 func TestRefreshingTable_Refresh(t *testing.T) {
 	var path ping.Path
-	path.Add(1, net.ParseIP("192.168.0.1")).Measurement(true, 10*time.Millisecond)
+	path.Add(1, net.ParseIP("192.168.0.1")).Measure(true, 10*time.Millisecond)
 	//path.Add(2, nil)
-	path.Add(3, net.ParseIP("192.168.0.2")).Measurement(true, 20*time.Millisecond)
+	path.Add(3, net.ParseIP("192.168.0.2")).Measure(true, 20*time.Millisecond)
 
 	table := RefreshingTable{Path: &path, Table: tview.NewTable()}
 	table.Refresh()

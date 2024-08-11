@@ -16,8 +16,9 @@ import (
 )
 
 type Path struct {
-	hops []*Hop
-	lock sync.RWMutex
+	MaxTTL int
+	hops   []*Hop
+	lock   sync.RWMutex
 }
 
 func (p *Path) Run(ctx context.Context, s *icmp2.Socket, addr net.IP, l *slog.Logger) error {
@@ -29,27 +30,31 @@ func (p *Path) Run(ctx context.Context, s *icmp2.Socket, addr net.IP, l *slog.Lo
 	return p.Ping(ctx, s, l)
 }
 
+const defaultMaxTTL = 64
+
 func (p *Path) Discover(ctx context.Context, s *icmp2.Socket, addr net.IP, l *slog.Logger) error {
+	maxTTL := p.MaxTTL
+	if maxTTL == 0 {
+		maxTTL = defaultMaxTTL
+	}
+
 	var seq uint16
-	var ttl uint8
 	payload := make([]byte, 56)
-	// TODO: only go to max TTL (config option)
-	for {
-		ttl++
+	for i := range maxTTL {
+		ttl := uint8(1 + i)
 		if err := s.Ping(addr, seq, ttl, payload); err != nil {
 			return fmt.Errorf("ping: %w", err)
 		}
-		from, msgType, _, err := s.Read(ctx)
-		if err == nil {
+		if from, msgType, _, err := s.Read(ctx); err == nil {
 			l.Debug("hop discovered", "addr", from, "ttl", ttl)
-			p.Add(int(ttl), from)
-		}
-		if msgType == ipv4.ICMPTypeEchoReply || msgType == ipv6.ICMPTypeEchoReply {
-			break
+			p.Add(ttl, from)
+			if msgType == ipv4.ICMPTypeEchoReply || msgType == ipv6.ICMPTypeEchoReply {
+				return nil
+			}
 		}
 		seq++
 	}
-	return nil
+	return fmt.Errorf("no path found: max TTL (%d) exceeded", maxTTL+1)
 }
 
 type response struct {
@@ -94,7 +99,7 @@ func (p *Path) pingHop(ctx context.Context, h *Hop, s *icmp2.Socket, ch chan res
 			}
 		case resp := <-ch:
 			if resp.seq == seq {
-				h.Measurement(resp.msgType == ipv4.ICMPTypeEchoReply || resp.msgType == ipv6.ICMPTypeEchoReply, time.Since(start))
+				h.Measure(resp.msgType == ipv4.ICMPTypeEchoReply || resp.msgType == ipv6.ICMPTypeEchoReply, time.Since(start))
 			}
 		case <-ctx.Done():
 			return nil
@@ -130,10 +135,10 @@ func (p *Path) MaxLatency() time.Duration {
 	return maxLatency
 }
 
-func (p *Path) Add(hop int, from net.IP) *Hop {
+func (p *Path) Add(hop uint8, from net.IP) *Hop {
 	p.lock.Lock()
 	defer p.lock.Unlock()
-	for range hop - len(p.hops) {
+	for range int(hop) - len(p.hops) {
 		p.hops = append(p.hops, nil)
 	}
 	h := Hop{addr: from}
@@ -158,7 +163,7 @@ type Hop struct {
 	lock         sync.RWMutex
 }
 
-func (h *Hop) Measurement(up bool, latency time.Duration) {
+func (h *Hop) Measure(up bool, latency time.Duration) {
 	h.lock.Lock()
 	defer h.lock.Unlock()
 	h.upCount++

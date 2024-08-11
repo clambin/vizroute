@@ -106,9 +106,9 @@ func TestPath_MaxLatency(t *testing.T) {
 			t.Parallel()
 			var p Path
 			for _, h := range tt.hops {
-				hop := p.Add(h.hop, nil)
+				hop := p.Add(uint8(h.hop), nil)
 				if h.latency > 0 {
-					hop.Measurement(true, h.latency)
+					hop.Measure(true, h.latency)
 				}
 			}
 			assert.Equal(t, tt.want, p.MaxLatency())
