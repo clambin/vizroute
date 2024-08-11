@@ -155,11 +155,13 @@ func (s *Socket) readPacket(c *icmp.PacketConn, tp Transport) (response, error) 
 	if err != nil {
 		return response{}, fmt.Errorf("parse: %w", err)
 	}
-	// TODO: this may not work inside a container: packet ID's seem to get overwritten
-	if echo, ok := msg.Body.(*icmp.Echo); ok && echo.ID != id() {
-		s.logger.Warn("discarding packet with invalid IP", "from", from, "id", echo.ID)
-		return response{}, errors.New("not my packet")
-	}
+	// TODO: this does not work inside a container: packet ID's seem to get overwritten
+	/*
+		if echo, ok := msg.Body.(*icmp.Echo); ok && echo.ID != id() {
+			s.logger.Warn("discarding packet with invalid IP", "from", from, "id", echo.ID)
+			return response{}, errors.New("not my packet")
+		}
+	*/
 	s.logger.Debug("packet received", "from", from.(*net.UDPAddr).IP, "packet", messageLogger(*msg))
 	return response{
 		from:    from.(*net.UDPAddr).IP,

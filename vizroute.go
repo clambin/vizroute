@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"time"
+	//_ "net/http/pprof"
 )
 
 var (
@@ -22,7 +23,11 @@ var a *tview.Application
 
 func main() {
 	flag.Parse()
-
+	/*
+		go func() {
+			log.Println(http.ListenAndServe("localhost:6060", nil))
+		}()
+	*/
 	var tp = icmp.IPv4
 	if *ipv6 {
 		tp = icmp.IPv6
