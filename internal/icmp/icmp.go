@@ -94,6 +94,7 @@ func (s *Socket) setTTL(ttl uint8) (err error) {
 }
 
 type response struct {
+	err     error
 	from    net.IP
 	msgType icmp.Type
 	body    icmp.MessageBody
@@ -158,7 +159,7 @@ func (s *Socket) readPacket(c *icmp.PacketConn, tp Transport) (response, error) 
 	// TODO: this does not work inside a container: packet ID's seem to get overwritten
 	/*
 		if echo, ok := msg.Body.(*icmp.Echo); ok && echo.ID != id() {
-			s.logger.Warn("discarding packet with invalid IP", "from", from, "id", echo.ID)
+			s.logger.Warn("discarding packet with invalid ID", "from", from, "id", echo.ID)
 			return response{}, errors.New("not my packet")
 		}
 	*/

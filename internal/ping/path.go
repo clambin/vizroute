@@ -3,7 +3,6 @@ package ping
 import (
 	"context"
 	"fmt"
-	icmp2 "github.com/clambin/vizroute/internal/icmp"
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
@@ -21,7 +20,12 @@ type Path struct {
 	lock   sync.RWMutex
 }
 
-func (p *Path) Run(ctx context.Context, s *icmp2.Socket, addr net.IP, l *slog.Logger) error {
+type Socket interface {
+	Ping(net.IP, uint16, uint8, []byte) error
+	Read(context.Context) (net.IP, icmp.Type, uint16, error)
+}
+
+func (p *Path) Run(ctx context.Context, s Socket, addr net.IP, l *slog.Logger) error {
 	l.Debug("discovering hops")
 	if err := p.Discover(ctx, s, addr, l); err != nil {
 		return fmt.Errorf("discover: %w", err)
@@ -32,7 +36,7 @@ func (p *Path) Run(ctx context.Context, s *icmp2.Socket, addr net.IP, l *slog.Lo
 
 const defaultMaxTTL = 64
 
-func (p *Path) Discover(ctx context.Context, s *icmp2.Socket, addr net.IP, l *slog.Logger) error {
+func (p *Path) Discover(ctx context.Context, s Socket, addr net.IP, l *slog.Logger) error {
 	maxTTL := p.MaxTTL
 	if maxTTL == 0 {
 		maxTTL = defaultMaxTTL
@@ -58,11 +62,12 @@ func (p *Path) Discover(ctx context.Context, s *icmp2.Socket, addr net.IP, l *sl
 }
 
 type response struct {
+	err     error
 	msgType icmp.Type
 	seq     uint16
 }
 
-func (p *Path) Ping(ctx context.Context, s *icmp2.Socket, l *slog.Logger) error {
+func (p *Path) Ping(ctx context.Context, s Socket, l *slog.Logger) error {
 	hops := make(map[string]chan response)
 	for _, hop := range p.hops {
 		if hop != nil && hop.Addr().String() != "" {
@@ -71,18 +76,20 @@ func (p *Path) Ping(ctx context.Context, s *icmp2.Socket, l *slog.Logger) error 
 	}
 
 	var g errgroup.Group
-	g.Go(func() error { return p.handleHopResponses(ctx, s, hops, l) })
 	for _, hop := range p.hops {
 		if hop != nil {
 			if ch, ok := hops[hop.Addr().String()]; ok {
-				g.Go(func() error { return p.pingHop(ctx, hop, s, ch, l) })
+				g.Go(func() error {
+					return p.pingHop(ctx, hop, s, ch, l)
+				})
 			}
 		}
 	}
+	g.Go(func() error { return p.handleHopResponses(ctx, s, hops, l) })
 	return g.Wait()
 }
 
-func (p *Path) pingHop(ctx context.Context, h *Hop, s *icmp2.Socket, ch chan response, l *slog.Logger) error {
+func (p *Path) pingHop(ctx context.Context, h *Hop, s Socket, ch chan response, l *slog.Logger) error {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	var seq uint16
@@ -98,26 +105,27 @@ func (p *Path) pingHop(ctx context.Context, h *Hop, s *icmp2.Socket, ch chan res
 				return fmt.Errorf("ping: %w", err)
 			}
 		case resp := <-ch:
-			if resp.seq == seq {
-				h.Measure(resp.msgType == ipv4.ICMPTypeEchoReply || resp.msgType == ipv6.ICMPTypeEchoReply, time.Since(start))
+			l.Debug("hop responded", "type", resp.msgType, "seq", resp.seq, "err", resp.err, "up", resp.err == nil && (resp.msgType == ipv4.ICMPTypeEchoReply || resp.msgType == ipv6.ICMPTypeEchoReply))
+			if resp.err != nil || resp.seq == seq {
+				h.Measure(resp.err == nil && (resp.msgType == ipv4.ICMPTypeEchoReply || resp.msgType == ipv6.ICMPTypeEchoReply), time.Since(start))
 			}
+			l.Debug("hop", "availability", h.Availability())
 		case <-ctx.Done():
 			return nil
 		}
 	}
 }
 
-func (p *Path) handleHopResponses(ctx context.Context, s *icmp2.Socket, hops map[string]chan response, l *slog.Logger) error {
+func (p *Path) handleHopResponses(ctx context.Context, s Socket, hops map[string]chan response, l *slog.Logger) error {
 	for {
+		from, msgType, seq, err := s.Read(ctx)
+		l.Debug("response received", "from", from.String(), "type", msgType, "seq", seq, "err", err)
 		select {
 		case <-ctx.Done():
 			return nil
 		default:
-			if from, msgType, seq, err := s.Read(ctx); err == nil {
-				l.Debug("response received", "from", from.String(), "type", msgType, "seq", seq)
-				if ch, ok := hops[from.String()]; ok {
-					ch <- response{msgType: msgType, seq: seq}
-				}
+			if ch, ok := hops[from.String()]; ok {
+				ch <- response{err: err, msgType: msgType, seq: seq}
 			}
 		}
 	}
