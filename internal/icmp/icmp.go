@@ -94,7 +94,6 @@ func (s *Socket) setTTL(ttl uint8) (err error) {
 }
 
 type response struct {
-	err     error
 	from    net.IP
 	msgType icmp.Type
 	body    icmp.MessageBody
