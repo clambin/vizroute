@@ -188,6 +188,12 @@ func (h *Hop) Addr() net.IP {
 	return h.addr
 }
 
+func (h *Hop) Packets() int {
+	h.lock.RLock()
+	defer h.lock.RUnlock()
+	return int(h.upCount)
+}
+
 func (h *Hop) Availability() float64 {
 	h.lock.RLock()
 	defer h.lock.RUnlock()

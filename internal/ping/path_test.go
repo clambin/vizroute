@@ -166,3 +166,22 @@ func TestPath_MaxLatency(t *testing.T) {
 		})
 	}
 }
+
+func TestHop_Measure(t *testing.T) {
+	var h Hop
+
+	h.Measure(false, 0)
+	assert.Equal(t, 1, h.Packets())
+	assert.Equal(t, float64(0), h.Availability())
+	assert.Equal(t, time.Duration(0), h.Latency())
+
+	h.Measure(true, time.Second)
+	assert.Equal(t, 2, h.Packets())
+	assert.Equal(t, 0.5, h.Availability())
+	assert.Equal(t, time.Second, h.Latency())
+
+	h.Measure(true, 3*time.Second)
+	assert.Equal(t, 3, h.Packets())
+	assert.Equal(t, 2.0/3.0, h.Availability())
+	assert.Equal(t, 2*time.Second, h.Latency())
+}
