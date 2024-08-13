@@ -1,28 +1,52 @@
 package ui
 
 import (
+	"context"
 	"github.com/clambin/vizroute/internal/ping"
 	"github.com/rivo/tview"
+	"io"
+	"time"
 )
 
 type UI struct {
-	Table     RefreshingTable
-	LogViewer *tview.TextView
-	Grid      *tview.Grid
+	Root      *tview.Grid
+	logViewer *tview.TextView
+	table     RefreshingTable
 }
 
-func New(path *ping.Path) *UI {
+func New(path *ping.Path, viewLogs bool) *UI {
 	ui := UI{
-		Table: RefreshingTable{
+		table: RefreshingTable{
 			Table: tview.NewTable(),
 			Path:  path,
 		},
-		LogViewer: tview.NewTextView(),
-		Grid:      tview.NewGrid(),
+		Root: tview.NewGrid(),
 	}
-	ui.LogViewer.SetScrollable(true)
-	ui.LogViewer.ScrollToEnd()
-	ui.Grid.AddItem(ui.Table, 0, 0, 1, 1, 0, 0, true)
-	ui.Grid.AddItem(ui.LogViewer, 1, 0, 1, 1, 0, 0, false)
+	ui.Root.AddItem(ui.table, 0, 0, 1, 1, 0, 0, true)
+	if viewLogs {
+		ui.logViewer = tview.NewTextView()
+		ui.logViewer.SetBorder(true).SetTitle("logs").SetTitleAlign(tview.AlignLeft)
+		ui.logViewer.SetScrollable(true).ScrollToEnd()
+		ui.Root.AddItem(ui.logViewer, 1, 0, 1, 1, 0, 0, false)
+	}
 	return &ui
+}
+
+func (u *UI) Update(ctx context.Context, app *tview.Application, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			app.QueueUpdateDraw(func() {
+				u.table.Refresh()
+			})
+		}
+	}
+}
+
+func (u *UI) LogViewer() io.Writer {
+	return u.logViewer
 }

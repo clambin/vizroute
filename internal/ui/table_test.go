@@ -11,12 +11,24 @@ import (
 )
 
 func TestRefreshingTable_Refresh(t *testing.T) {
+	packets := []struct {
+		hop     uint8
+		ip      string
+		up      bool
+		latency time.Duration
+	}{
+		{1, "192.168.0.1", false, 0},
+		{1, "192.168.0.1", true, 10 * time.Millisecond},
+		{3, "192.168.0.2", false, 0},
+		{3, "192.168.0.2", true, 20 * time.Millisecond},
+	}
+
 	var path ping.Path
-	path.Add(1, net.ParseIP("192.168.0.1")).Measure(false, 0)
-	path.Add(1, net.ParseIP("192.168.0.1")).Measure(true, 10*time.Millisecond)
-	//path.Add(2, nil)
-	path.Add(3, net.ParseIP("192.168.0.2")).Measure(false, 0)
-	path.Add(3, net.ParseIP("192.168.0.2")).Measure(true, 20*time.Millisecond)
+	for _, packet := range packets {
+		h := path.Add(packet.hop, net.ParseIP(packet.ip))
+		h.Sent()
+		h.Received(packet.up, packet.latency)
+	}
 
 	table := RefreshingTable{Path: &path, Table: tview.NewTable()}
 	table.Refresh()

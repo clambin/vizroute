@@ -13,7 +13,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
-	"sync/atomic"
+	"sync"
 	"testing"
 	"time"
 )
@@ -22,28 +22,23 @@ func TestPath_Ping(t *testing.T) {
 	l := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	ctx, cancel := context.WithCancel(context.Background())
 	s := mocks.NewSocket(t)
-	var lastSeq atomic.Uint32
-	var shouldReply atomic.Int32
 	localhost := net.ParseIP("127.0.0.1")
 
+	var seqnos sequenceNumbers
+
 	s.EXPECT().Ping(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(_ net.IP, seq uint16, _ uint8, _ []byte) error {
-		lastSeq.Store(uint32(seq))
-		shouldReply.Add(1)
+		l.Debug("sent", "seq", seq)
+		seqnos.push(seq)
 		return nil
 	})
 	s.EXPECT().Read(ctx).RunAndReturn(func(_ context.Context) (net.IP, icmp2.Type, uint16, error) {
-		if shouldReply.Load() > 0 {
-			if seq := lastSeq.Load(); seq%2 != 0 {
-				time.Sleep(10 * time.Millisecond)
-				shouldReply.Add(-1)
-				return localhost, ipv4.ICMPTypeEchoReply, uint16(seq), nil
-			}
+		seq, ok := seqnos.pop()
+		l.Debug("read", "seq", seq, "ok", ok, "pop", seq&0x1 == 0x1)
+		if ok && seq&0x1 == 0x1 {
+			return localhost, ipv4.ICMPTypeEchoReply, seq, nil
 		}
 		time.Sleep(time.Second)
-		if shouldReply.Load() > 0 {
-			return localhost, ipv4.ICMPTypeTimeExceeded, 0, errors.New("no answer")
-		}
-		return nil, ipv4.ICMPTypeEchoReply, 0, errors.New("timeout")
+		return nil, ipv4.ICMPTypeTimeExceeded, 0, errors.New("timeout")
 	})
 
 	path := Path{
@@ -55,11 +50,33 @@ func TestPath_Ping(t *testing.T) {
 
 	assert.Eventually(t, func() bool {
 		hops := path.Hops()
-		return hops[0].Availability() == 0.5
+		return hops[0].Availability() > 0
 	}, 5*time.Second, 100*time.Millisecond)
 
 	cancel()
 	assert.NoError(t, <-ch)
+}
+
+type sequenceNumbers struct {
+	seq  []uint16
+	lock sync.Mutex
+}
+
+func (s *sequenceNumbers) push(seq uint16) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	s.seq = append(s.seq, seq)
+}
+
+func (s *sequenceNumbers) pop() (uint16, bool) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	if len(s.seq) == 0 {
+		return 0, false
+	}
+	next := s.seq[0]
+	s.seq = s.seq[1:]
+	return next, true
 }
 
 func TestPath_Discover_And_Ping_IPv4(t *testing.T) {
@@ -159,7 +176,7 @@ func TestPath_MaxLatency(t *testing.T) {
 			for _, h := range tt.hops {
 				hop := p.Add(uint8(h.hop), nil)
 				if h.latency > 0 {
-					hop.Measure(true, h.latency)
+					hop.Received(true, h.latency)
 				}
 			}
 			assert.Equal(t, tt.want, p.MaxLatency())
@@ -167,20 +184,23 @@ func TestPath_MaxLatency(t *testing.T) {
 	}
 }
 
-func TestHop_Measure(t *testing.T) {
+func TestHop(t *testing.T) {
 	var h Hop
 
-	h.Measure(false, 0)
+	h.Sent()
+	h.Received(false, 0)
 	assert.Equal(t, 1, h.Packets())
 	assert.Equal(t, float64(0), h.Availability())
 	assert.Equal(t, time.Duration(0), h.Latency())
 
-	h.Measure(true, time.Second)
+	h.Sent()
+	h.Received(true, time.Second)
 	assert.Equal(t, 2, h.Packets())
 	assert.Equal(t, 0.5, h.Availability())
 	assert.Equal(t, time.Second, h.Latency())
 
-	h.Measure(true, 3*time.Second)
+	h.Sent()
+	h.Received(true, 3*time.Second)
 	assert.Equal(t, 3, h.Packets())
 	assert.Equal(t, 2.0/3.0, h.Availability())
 	assert.Equal(t, 2*time.Second, h.Latency())

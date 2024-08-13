@@ -6,7 +6,6 @@ import (
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
-	"golang.org/x/sync/errgroup"
 	"log/slog"
 	"net"
 	"slices"
@@ -68,67 +67,8 @@ type response struct {
 }
 
 func (p *Path) Ping(ctx context.Context, s Socket, l *slog.Logger) error {
-	hops := make(map[string]chan response)
-	for _, hop := range p.hops {
-		if hop != nil && hop.Addr().String() != "" {
-			hops[hop.Addr().String()] = make(chan response)
-		}
-	}
-
-	var g errgroup.Group
-	for _, hop := range p.hops {
-		if hop != nil {
-			if ch, ok := hops[hop.Addr().String()]; ok {
-				g.Go(func() error {
-					return p.pingHop(ctx, hop, s, ch, l)
-				})
-			}
-		}
-	}
-	g.Go(func() error { return p.handleHopResponses(ctx, s, hops, l) })
-	return g.Wait()
-}
-
-func (p *Path) pingHop(ctx context.Context, h *Hop, s Socket, ch chan response, l *slog.Logger) error {
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
-	var seq uint16
-	var start time.Time
-	payload := make([]byte, 56)
-	for {
-		select {
-		case <-ticker.C:
-			start = time.Now()
-			seq++
-			l.Debug("pinging hop", "addr", h.Addr(), "seq", seq)
-			if err := s.Ping(h.Addr(), seq, 255, payload); err != nil {
-				return fmt.Errorf("ping: %w", err)
-			}
-		case resp := <-ch:
-			l.Debug("hop responded", "type", resp.msgType, "seq", resp.seq, "err", resp.err, "up", resp.err == nil && (resp.msgType == ipv4.ICMPTypeEchoReply || resp.msgType == ipv6.ICMPTypeEchoReply))
-			if resp.err != nil || resp.seq == seq {
-				h.Measure(resp.err == nil && (resp.msgType == ipv4.ICMPTypeEchoReply || resp.msgType == ipv6.ICMPTypeEchoReply), time.Since(start))
-			}
-			l.Debug("hop", "availability", h.Availability())
-		case <-ctx.Done():
-			return nil
-		}
-	}
-}
-
-func (p *Path) handleHopResponses(ctx context.Context, s Socket, hops map[string]chan response, l *slog.Logger) error {
-	for {
-		from, msgType, seq, err := s.Read(ctx)
-		l.Debug("response received", "from", from.String(), "type", msgType, "seq", seq, "err", err)
-		select {
-		case <-ctx.Done():
-			return nil
-		default:
-			if ch, ok := hops[from.String()]; ok {
-				ch <- response{err: err, msgType: msgType, seq: seq}
-			}
-		}
-	}
+	pingHops(ctx, p.hops, s, time.Second, 5*time.Second, l)
+	return nil
 }
 
 func (p *Path) MaxLatency() time.Duration {
@@ -163,22 +103,25 @@ func (p *Path) Hops() []*Hop {
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 type Hop struct {
-	addr         net.IP
-	ups          float64
-	upCount      float64
-	latencies    time.Duration
-	latencyCount float64
-	lock         sync.RWMutex
+	addr      net.IP
+	sent      float64
+	ups       float64
+	latencies time.Duration
+	lock      sync.RWMutex
 }
 
-func (h *Hop) Measure(up bool, latency time.Duration) {
+func (h *Hop) Sent() {
 	h.lock.Lock()
 	defer h.lock.Unlock()
-	h.upCount++
+	h.sent++
+}
+
+func (h *Hop) Received(up bool, latency time.Duration) {
 	if up {
+		h.lock.Lock()
+		defer h.lock.Unlock()
 		h.ups++
 		h.latencies += latency
-		h.latencyCount++
 	}
 }
 
@@ -191,23 +134,23 @@ func (h *Hop) Addr() net.IP {
 func (h *Hop) Packets() int {
 	h.lock.RLock()
 	defer h.lock.RUnlock()
-	return int(h.upCount)
+	return int(h.sent)
 }
 
 func (h *Hop) Availability() float64 {
 	h.lock.RLock()
 	defer h.lock.RUnlock()
-	if h.upCount == 0 {
+	if h.sent == 0 {
 		return 0
 	}
-	return h.ups / h.upCount
+	return h.ups / h.sent
 }
 
 func (h *Hop) Latency() time.Duration {
 	h.lock.RLock()
 	defer h.lock.RUnlock()
-	if h.latencyCount == 0 {
+	if h.ups == 0 {
 		return 0
 	}
-	return h.latencies / time.Duration(h.latencyCount)
+	return h.latencies / time.Duration(h.ups)
 }
