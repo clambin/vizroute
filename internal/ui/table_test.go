@@ -4,6 +4,7 @@ import (
 	"github.com/clambin/vizroute/internal/ping"
 	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"net"
 	"testing"
 	"time"
@@ -29,10 +30,14 @@ func TestRefreshingTable_Refresh(t *testing.T) {
 			content[r][c] = table.GetCell(r, c).Text
 		}
 	}
-	assert.Equal(t, [][]string{
-		{"hop", "addr", "name", "packets", "latency", "", "loss", ""},
-		{"1", "192.168.0.1", "", "1", "10.0ms", "|*****-----|", "0.0%", "|----------|"},
-		{"2", "", "", "", "", "", "", ""},
-		{"3", "192.168.0.2", "", "1", "20.0ms", "|**********|", "0.0%", "|----------|"},
-	}, content)
+	want := [][]string{
+		{"hop", "addr", "name", "sent", "rcvd", "latency", "", "loss", ""},
+		{"1", "192.168.0.1", "", "1", "1", "10.0ms", "|*****-----|", "0.0%", "|----------|"},
+		{"2", "", "", "", "", "", "", "", ""},
+		{"3", "192.168.0.2", "", "1", "1", "20.0ms", "|**********|", "0.0%", "|----------|"},
+	}
+	require.Equal(t, len(want), len(content))
+	for i, row := range content {
+		assert.Equal(t, want[i], row)
+	}
 }

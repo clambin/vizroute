@@ -32,9 +32,6 @@ func main() {
 	if *ipv6 {
 		tp = icmp.IPv6
 	}
-	l := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
-	s := icmp.New(tp, l)
-	s.Timeout = time.Second
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
@@ -44,22 +41,28 @@ func main() {
 		os.Exit(1)
 	}
 
+	var p ping.Path
+	root := ui.New(&p)
+
+	l := slog.New(slog.NewTextHandler(root.LogViewer, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	s := icmp.New(tp, l)
+	s.Timeout = time.Second
+
 	addr, err := s.Resolve(flag.Arg(0))
 	if err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "Error resolving host %q: %s\n", flag.Arg(0), err)
 		os.Exit(1)
 	}
 
-	var p ping.Path
 	go func() {
 		if err = p.Run(ctx, s, addr, l); err != nil {
 			panic(err)
 		}
 	}()
-
-	table := &ui.RefreshingTable{Table: tview.NewTable(), Path: &p}
-	a = tview.NewApplication().SetRoot(table, true)
-	go update(ctx, a, table, time.Second)
+	a = tview.NewApplication().SetRoot(root.Grid, true)
+	a.SetFocus(root.LogViewer)
+	go update(ctx, a, &root.Table, time.Second)
 	_ = a.Run()
 }
 
