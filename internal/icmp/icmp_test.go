@@ -4,6 +4,8 @@ import (
 	"context"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/net/ipv4"
+	"golang.org/x/net/ipv6"
 	"log/slog"
 	"os"
 	"testing"
@@ -19,12 +21,14 @@ func TestSocket_Ping_IPv4(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	_, _, _, err = s.Read(ctx)
+	from, msgType, seq, err := s.Read(ctx)
 	assert.NoError(t, err)
+	assert.Equal(t, "127.0.0.1", from.String())
+	assert.Equal(t, ipv4.ICMPTypeEchoReply, msgType)
+	assert.Equal(t, uint16(1), seq)
 }
 
 func TestSocket_Ping_IPv6(t *testing.T) {
-	//t.Skip("IPv6 broken")
 	l := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	s := New(IPv6, l)
 	ip, err := s.Resolve("::1")
@@ -34,8 +38,11 @@ func TestSocket_Ping_IPv6(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	_, _, _, err = s.Read(ctx)
+	from, msgType, seq, err := s.Read(ctx)
 	assert.NoError(t, err)
+	assert.Equal(t, "::1", from.String())
+	assert.Equal(t, ipv6.ICMPTypeEchoReply, msgType)
+	assert.Equal(t, uint16(1), seq)
 }
 
 func TestTransport_String(t *testing.T) {

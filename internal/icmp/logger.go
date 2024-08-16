@@ -18,8 +18,8 @@ func (m messageLogger) LogValue() slog.Value {
 		b := m.Body.(*icmp.Echo)
 		attrs = append(attrs, slog.Int("seq", b.Seq))
 	case ipv4.ICMPTypeTimeExceeded, ipv6.ICMPTypeTimeExceeded:
-		b := m.Body.(*icmp.TimeExceeded)
-		attrs = append(attrs, slog.String("data", string(b.Data)))
+		//b := m.Body.(*icmp.TimeExceeded)
+		//attrs = append(attrs, slog.String("data", string(b.Data)))
 	}
 	return slog.GroupValue(attrs...)
 }

@@ -8,6 +8,7 @@ import (
 	"github.com/clambin/vizroute/internal/ping"
 	"github.com/clambin/vizroute/internal/ui"
 	"github.com/rivo/tview"
+	"io"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -16,25 +17,19 @@ import (
 )
 
 var (
-	ipv6 = flag.Bool("6", false, "Use IPv6")
+	ipv6     = flag.Bool("6", false, "Use IPv6")
+	debug    = flag.Bool("debug", false, "Enable debug logging")
+	showLogs = flag.Bool("logs", false, "Show logging")
 )
 
 var a *tview.Application
 
 func main() {
 	flag.Parse()
-	/*
-		go func() {
-			log.Println(http.ListenAndServe("localhost:6060", nil))
-		}()
-	*/
 	var tp = icmp.IPv4
 	if *ipv6 {
 		tp = icmp.IPv6
 	}
-	l := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
-	s := icmp.New(tp, l)
-	s.Timeout = time.Second
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
@@ -44,36 +39,34 @@ func main() {
 		os.Exit(1)
 	}
 
+	var p ping.Path
+	tui := ui.New(&p, *showLogs)
+
+	level := slog.LevelInfo
+	if *debug {
+		level = slog.LevelDebug
+	}
+	var output io.Writer = os.Stderr
+	if *showLogs {
+		output = tui.LogViewer
+	}
+	l := slog.New(slog.NewTextHandler(output, &slog.HandlerOptions{Level: level}))
+
+	s := icmp.New(tp, l.With("socket", tp))
+	//s.Timeout = time.Second
+
 	addr, err := s.Resolve(flag.Arg(0))
 	if err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "Error resolving host %q: %s\n", flag.Arg(0), err)
 		os.Exit(1)
 	}
 
-	var p ping.Path
 	go func() {
 		if err = p.Run(ctx, s, addr, l); err != nil {
 			panic(err)
 		}
 	}()
-
-	table := &ui.RefreshingTable{Table: tview.NewTable(), Path: &p}
-	a = tview.NewApplication().SetRoot(table, true)
-	go update(ctx, a, table, time.Second)
+	a = tview.NewApplication().SetRoot(tui.Root, true)
+	go tui.Update(ctx, a, time.Second)
 	_ = a.Run()
-}
-
-func update(ctx context.Context, app *tview.Application, t *ui.RefreshingTable, interval time.Duration) {
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			app.QueueUpdateDraw(func() {
-				t.Refresh()
-			})
-		}
-	}
 }

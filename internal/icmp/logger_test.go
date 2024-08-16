@@ -32,7 +32,7 @@ func TestMessageLogger(t *testing.T) {
 		{
 			name: "ipv4 - time exceeded",
 			msg:  icmp.Message{Type: ipv4.ICMPTypeTimeExceeded, Code: 0, Body: &icmp.TimeExceeded{Data: []byte("hello world")}},
-			want: `level=INFO msg=msg msg.type="time exceeded" msg.data="hello world"
+			want: `level=INFO msg=msg msg.type="time exceeded"
 `,
 		},
 		{
@@ -50,7 +50,7 @@ func TestMessageLogger(t *testing.T) {
 		{
 			name: "ipv6 - time exceeded",
 			msg:  icmp.Message{Type: ipv6.ICMPTypeTimeExceeded, Code: 0, Body: &icmp.TimeExceeded{Data: []byte("hello world")}},
-			want: `level=INFO msg=msg msg.type="time exceeded" msg.data="hello world"
+			want: `level=INFO msg=msg msg.type="time exceeded"
 `,
 		},
 	}
