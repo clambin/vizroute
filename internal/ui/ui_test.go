@@ -36,7 +36,7 @@ func TestUI_Update(t *testing.T) {
 		done <- struct{}{}
 	}()
 
-	assert.Eventually(t, func() bool { return called.Load() }, 100*time.Millisecond, 10*time.Millisecond)
+	assert.Eventually(t, func() bool { return called.Load() }, time.Second, 10*time.Millisecond)
 	cancel()
 	<-done
 

@@ -61,7 +61,6 @@ func (p *Path) Discover(ctx context.Context, s Socket, addr net.IP, l *slog.Logg
 }
 
 type response struct {
-	err     error
 	msgType icmp.Type
 	seq     uint16
 }
