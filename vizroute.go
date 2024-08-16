@@ -48,7 +48,7 @@ func main() {
 	}
 	var output io.Writer = os.Stderr
 	if *showLogs {
-		output = tui.LogViewer()
+		output = tui.LogViewer
 	}
 	l := slog.New(slog.NewTextHandler(output, &slog.HandlerOptions{Level: level}))
 

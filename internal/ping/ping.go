@@ -9,6 +9,24 @@ import (
 	"time"
 )
 
+func pingHops(ctx context.Context, hops []*Hop, s Socket, interval, timeout time.Duration, l *slog.Logger) {
+	responses := make(map[string]chan response)
+	for _, hop := range hops {
+		if hop != nil && hop.Addr().String() != "" {
+			responses[hop.Addr().String()] = make(chan response, 1)
+		}
+	}
+	go receiveResponses(ctx, s, responses, l)
+	for _, hop := range hops {
+		if hop != nil {
+			if ch, ok := responses[hop.Addr().String()]; ok {
+				go pingHop(ctx, hop, s, interval, timeout, ch, l.With("addr", hop.Addr()))
+			}
+		}
+	}
+	<-ctx.Done()
+}
+
 func pingHop(ctx context.Context, hop *Hop, s Socket, interval, timeout time.Duration, ch chan response, l *slog.Logger) {
 	sendTicker := time.NewTicker(interval)
 	defer sendTicker.Stop()
@@ -55,6 +73,32 @@ func pingHop(ctx context.Context, hop *Hop, s Socket, interval, timeout time.Dur
 	}
 }
 
+func receiveResponses(ctx context.Context, s Socket, responses map[string]chan response, l *slog.Logger) {
+	for {
+		addr, msgType, seq, err := s.Read(ctx)
+		if err != nil {
+			l.Warn("read failed", "err", err)
+			continue
+		}
+		l.Debug("received packet", "addr", addr, "msgType", msgType, "seq", seq)
+		ch, ok := responses[addr.String()]
+		if !ok {
+			l.Warn("no channel found for hop", "addr", addr, "msgType", msgType, "seq", seq)
+			continue
+		}
+		ch <- response{
+			msgType: msgType,
+			seq:     seq,
+		}
+
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+	}
+}
+
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 type outstandingPackets struct {
@@ -92,50 +136,4 @@ func (o *outstandingPackets) timeout(timeout time.Duration) []uint16 {
 		}
 	}
 	return timedOut
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-func pingHops(ctx context.Context, hops []*Hop, s Socket, interval, timeout time.Duration, l *slog.Logger) {
-	responses := make(map[string]chan response)
-	for _, hop := range hops {
-		if hop != nil && hop.Addr().String() != "" {
-			responses[hop.Addr().String()] = make(chan response, 1)
-		}
-	}
-	go receiveResponses(ctx, s, responses, l)
-	for _, hop := range hops {
-		if hop != nil {
-			if ch, ok := responses[hop.Addr().String()]; ok {
-				go pingHop(ctx, hop, s, interval, timeout, ch, l.With("addr", hop.Addr()))
-			}
-		}
-	}
-	<-ctx.Done()
-}
-
-func receiveResponses(ctx context.Context, s Socket, responses map[string]chan response, l *slog.Logger) {
-	for {
-		addr, msgType, seq, err := s.Read(ctx)
-		if err != nil {
-			l.Warn("read failed", "err", err)
-			continue
-		}
-		l.Debug("received packet", "addr", addr, "msgType", msgType, "seq", seq)
-		ch, ok := responses[addr.String()]
-		if !ok {
-			l.Warn("no channel found for hop", "addr", addr, "msgType", msgType, "seq", seq)
-			continue
-		}
-		ch <- response{
-			msgType: msgType,
-			seq:     seq,
-		}
-
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-	}
 }

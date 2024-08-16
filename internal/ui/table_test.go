@@ -34,7 +34,7 @@ func TestRefreshingTable_Refresh(t *testing.T) {
 	table.Refresh()
 
 	rows := 1 + len(path.Hops())
-	var cols = table.GetColumnCount()
+	cols := table.GetColumnCount()
 	content := make([][]string, rows)
 	for r := range rows {
 		content[r] = make([]string, cols)
@@ -52,4 +52,17 @@ func TestRefreshingTable_Refresh(t *testing.T) {
 	for i, row := range content {
 		assert.Equal(t, want[i], row)
 	}
+}
+
+func readTable(table RefreshingTable) [][]string {
+	rows := table.GetRowCount()
+	content := make([][]string, rows)
+	cols := table.GetColumnCount()
+	for r := range rows {
+		content[r] = make([]string, cols)
+		for c := range cols {
+			content[r][c] = table.GetCell(r, c).Text
+		}
+	}
+	return content
 }
