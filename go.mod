@@ -1,8 +1,6 @@
 module github.com/clambin/vizroute
 
-go 1.22
-
-toolchain go1.22.6
+go 1.23
 
 require (
 	github.com/clambin/go-common/testutils v0.1.0
