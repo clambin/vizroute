@@ -2,7 +2,8 @@ package ui
 
 import (
 	"context"
-	"github.com/clambin/vizroute/internal/ping"
+	ping2 "github.com/clambin/pinger/pkg/ping"
+	"github.com/clambin/vizroute/internal/discover"
 	"github.com/clambin/vizroute/internal/ui/mocks"
 	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
@@ -22,10 +23,12 @@ func TestUI_Update(t *testing.T) {
 		return nil
 	})
 
-	var path ping.Path
-	path.Add(1, net.ParseIP("1.1.1.1"))
-	path.Hops()[0].Sent()
-	path.Hops()[0].Received(true, time.Second)
+	var path discover.Path
+	h := ping2.Target{IP: net.ParseIP("1.1.1.1")}
+	h.Sent()
+	h.Received(true, time.Second)
+	path.AddHop()
+	path.SetHop(0, &h)
 	tui := New(&path, true)
 
 	ctx, cancel := context.WithCancel(context.Background())

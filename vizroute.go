@@ -4,8 +4,9 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/clambin/vizroute/internal/icmp"
-	"github.com/clambin/vizroute/internal/ping"
+	"github.com/clambin/pinger/pkg/ping"
+	"github.com/clambin/pinger/pkg/ping/icmp"
+	"github.com/clambin/vizroute/internal/discover"
 	"github.com/clambin/vizroute/internal/ui"
 	"github.com/rivo/tview"
 	"io"
@@ -20,17 +21,13 @@ var (
 	ipv6     = flag.Bool("6", false, "Use IPv6")
 	debug    = flag.Bool("debug", false, "Enable debug logging")
 	showLogs = flag.Bool("logs", false, "Show logging")
+	maxHops  = flag.Int("maxhops", 20, "Maximum number of hops to try")
 )
 
 var a *tview.Application
 
 func main() {
 	flag.Parse()
-	var tp = icmp.IPv4
-	if *ipv6 {
-		tp = icmp.IPv6
-	}
-
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 
@@ -39,21 +36,26 @@ func main() {
 		os.Exit(1)
 	}
 
-	var p ping.Path
+	var p discover.Path
 	tui := ui.New(&p, *showLogs)
 
-	level := slog.LevelInfo
-	if *debug {
-		level = slog.LevelDebug
-	}
 	var output io.Writer = os.Stderr
 	if *showLogs {
 		output = tui.LogViewer
 	}
-	l := slog.New(slog.NewTextHandler(output, &slog.HandlerOptions{Level: level}))
+	var handlerOptions slog.HandlerOptions
+	if *debug {
+		handlerOptions.Level = slog.LevelDebug
+	}
+	l := slog.New(slog.NewTextHandler(output, &handlerOptions))
+
+	var tp = icmp.IPv4
+	if *ipv6 {
+		tp = icmp.IPv6
+	}
 
 	s := icmp.New(tp, l.With("socket", tp))
-	//s.Timeout = time.Second
+	go s.Serve(ctx)
 
 	addr, err := s.Resolve(flag.Arg(0))
 	if err != nil {
@@ -62,8 +64,8 @@ func main() {
 	}
 
 	go func() {
-		if err = p.Run(ctx, s, addr, l); err != nil {
-			panic(err)
+		if err = discover.Discover(ctx, &p, addr, s, uint8(*maxHops), l); err == nil {
+			ping.Ping(ctx, p.Hops, s, time.Second, 5*time.Second, l)
 		}
 	}()
 	a = tview.NewApplication().SetRoot(tui.Root, true)

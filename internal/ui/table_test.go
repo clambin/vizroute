@@ -1,7 +1,8 @@
 package ui
 
 import (
-	"github.com/clambin/vizroute/internal/ping"
+	ping2 "github.com/clambin/pinger/pkg/ping"
+	"github.com/clambin/vizroute/internal/discover"
 	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -23,17 +24,21 @@ func TestRefreshingTable_Refresh(t *testing.T) {
 		{3, "192.168.0.2", true, 20 * time.Millisecond},
 	}
 
-	var path ping.Path
+	var path discover.Path
+	for range 3 {
+		path.AddHop()
+	}
 	for _, packet := range packets {
-		h := path.Add(packet.hop, net.ParseIP(packet.ip))
+		h := ping2.Target{IP: net.ParseIP(packet.ip)}
 		h.Sent()
 		h.Received(packet.up, packet.latency)
+		path.SetHop(int(packet.hop-1), &h)
 	}
 
 	table := RefreshingTable{Path: &path, Table: tview.NewTable()}
 	table.Refresh()
 
-	rows := 1 + len(path.Hops())
+	rows := 1 + path.Len()
 	cols := table.GetColumnCount()
 	content := make([][]string, rows)
 	for r := range rows {

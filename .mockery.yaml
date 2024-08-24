@@ -4,9 +4,6 @@ dir: "{{.InterfaceDir}}/mocks"
 mockname: "{{.InterfaceName}}"
 outpkg: "mocks"
 packages:
-  github.com/clambin/vizroute/internal/ping:
-    interfaces:
-      Socket:
   github.com/clambin/vizroute/internal/ui:
     interfaces:
       Application:
