@@ -2,7 +2,7 @@ package ui
 
 import (
 	"context"
-	"github.com/clambin/vizroute/internal/ping"
+	"github.com/clambin/vizroute/internal/discover"
 	"github.com/rivo/tview"
 	"time"
 )
@@ -17,7 +17,7 @@ type Application interface {
 	QueueUpdateDraw(func()) *tview.Application
 }
 
-func New(path *ping.Path, viewLogs bool) *UI {
+func New(path *discover.Path, viewLogs bool) *UI {
 	ui := UI{
 		table: RefreshingTable{
 			Table: tview.NewTable(),
