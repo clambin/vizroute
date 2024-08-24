@@ -1,6 +1,6 @@
 module github.com/clambin/vizroute
 
-go 1.23
+go 1.23.0
 
 require (
 	github.com/clambin/pinger v1.10.0
