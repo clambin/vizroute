@@ -7,7 +7,7 @@ import (
 
 func Gradient(value float64, maximum float64, length int) string {
 	length -= 2
-	left := int(math.Ceil(float64(length) * value / maximum))
+	left := min(length, int(math.Ceil(float64(length)*value/maximum)))
 	right := length - left
 
 	var output strings.Builder

@@ -20,7 +20,8 @@ func (t *RefreshingTable) Refresh() {
 	stats := getHopStatistics(t.Path)
 	maxLatency := getMaxLatency(stats)
 
-	for i, col := range []string{"hop", "addr", "name", "sent", "rcvd", "latency", "", "loss", ""} {
+	columns := []string{"hop", "addr", "name", "sent", "rcvd", "latency", "", "loss", ""}
+	for i, col := range columns {
 		t.SetCell(0, i, tview.NewTableCell(col))
 	}
 	for r, hop := range stats {
@@ -29,39 +30,54 @@ func (t *RefreshingTable) Refresh() {
 		if hop == nil {
 			continue
 		}
-		col++
 		addr := hop.addr.String()
-		t.SetCell(r+1, col, tview.NewTableCell(addr))
-		col++
-		ipAddresses, err := net.LookupAddr(addr)
-		if err != nil {
-			ipAddresses = []string{""}
-		}
-		t.SetCell(r+1, col, tview.NewTableCell(ipAddresses[0]))
-		col++
-		var packets string
-		if hop.Sent > 0 {
-			packets = strconv.Itoa(hop.Sent)
-		}
-		t.SetCell(r+1, col, tview.NewTableCell(packets).SetAlign(tview.AlignRight))
-		col++
-		packets = ""
-		if hop.Received > 0 {
-			packets = strconv.Itoa(hop.Received)
-		}
-		t.SetCell(r+1, col, tview.NewTableCell(packets).SetAlign(tview.AlignRight))
-		col++
-		latency := hop.Latency
-		if latency > 0 {
-			t.SetCell(r+1, col, tview.NewTableCell(strconv.FormatFloat(1000*latency.Seconds(), 'f', 1, 64)+"ms").SetAlign(tview.AlignRight))
-			col++
-			t.SetCell(r+1, col, tview.NewTableCell(Gradient(latency.Seconds(), maxLatency.Seconds(), 12)))
-			col++
-			loss := 1 - float64(hop.Received)/float64(hop.Sent)
-			t.SetCell(r+1, col, tview.NewTableCell(strconv.FormatFloat(100*loss, 'f', 1, 64)+"%").SetAlign(tview.AlignRight))
-			col++
-			t.SetCell(r+1, col, tview.NewTableCell(Gradient(loss, 1, 12)))
-			col++
+		loss := 1 - float64(hop.Received)/float64(hop.Sent)
+		for col++; col < len(columns); col++ {
+			var value string
+			var alignRight bool
+			switch col {
+			case 1:
+				value = addr
+			case 2:
+				ipAddresses, err := net.LookupAddr(addr)
+				if err != nil {
+					ipAddresses = []string{""}
+				}
+				value = ipAddresses[0]
+			case 3:
+				if hop.Sent > 0 && hop.Received > 0 {
+					value = strconv.Itoa(hop.Sent)
+					alignRight = true
+				}
+			case 4:
+				if hop.Received > 0 {
+					value = strconv.Itoa(hop.Received)
+					alignRight = true
+				}
+			case 5:
+				if hop.Latency > 0 {
+					value = strconv.FormatFloat(1000*hop.Latency.Seconds(), 'f', 1, 64) + "ms"
+					alignRight = true
+				}
+			case 6:
+				if hop.Latency > 0 {
+					value = Gradient(hop.Latency.Seconds(), maxLatency.Seconds(), 12)
+				}
+			case 7:
+				if hop.Latency > 0 {
+					value = strconv.FormatFloat(100*loss, 'f', 1, 64) + "%"
+					alignRight = true
+				}
+			case 8:
+				if hop.Latency > 0 {
+					value = Gradient(loss, 1, 12)
+				}
+			}
+			cell := tview.NewTableCell(value)
+			if alignRight {
+				cell.SetAlign(tview.AlignRight)
+			}
+			t.SetCell(r+1, col, cell)
 		}
 	}
 }

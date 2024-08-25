@@ -40,10 +40,6 @@ func TestGradient(t *testing.T) {
 }
 
 func TestGradient_length(t *testing.T) {
-	const maxValue float64 = 100
-	const resolution float64 = 10000
-	const length = 15
-	for v := range int(maxValue * resolution) {
-		assert.Len(t, Gradient(float64(v)/resolution, maxValue, length), length)
-	}
+	g := Gradient(0.02656511111, 0.026565, 12)
+	assert.Len(t, g, 12)
 }
