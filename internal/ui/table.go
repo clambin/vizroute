@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"github.com/clambin/pinger/pkg/ping"
 	"github.com/clambin/vizroute/internal/discover"
 	"github.com/rivo/tview"
 	"net"
@@ -39,24 +40,24 @@ func (t *RefreshingTable) Refresh() {
 		t.SetCell(r+1, col, tview.NewTableCell(ipAddresses[0]))
 		col++
 		var packets string
-		if hop.sent > 0 {
-			packets = strconv.Itoa(hop.sent)
+		if hop.Sent > 0 {
+			packets = strconv.Itoa(hop.Sent)
 		}
 		t.SetCell(r+1, col, tview.NewTableCell(packets).SetAlign(tview.AlignRight))
 		col++
 		packets = ""
-		if hop.rcvd > 0 {
-			packets = strconv.Itoa(hop.rcvd)
+		if hop.Received > 0 {
+			packets = strconv.Itoa(hop.Received)
 		}
 		t.SetCell(r+1, col, tview.NewTableCell(packets).SetAlign(tview.AlignRight))
 		col++
-		latency := hop.latency
+		latency := hop.Latency
 		if latency > 0 {
 			t.SetCell(r+1, col, tview.NewTableCell(strconv.FormatFloat(1000*latency.Seconds(), 'f', 1, 64)+"ms").SetAlign(tview.AlignRight))
 			col++
 			t.SetCell(r+1, col, tview.NewTableCell(Gradient(latency.Seconds(), maxLatency.Seconds(), 12)))
 			col++
-			loss := 1 - float64(hop.rcvd)/float64(hop.sent)
+			loss := 1 - float64(hop.Received)/float64(hop.Sent)
 			t.SetCell(r+1, col, tview.NewTableCell(strconv.FormatFloat(100*loss, 'f', 1, 64)+"%").SetAlign(tview.AlignRight))
 			col++
 			t.SetCell(r+1, col, tview.NewTableCell(Gradient(loss, 1, 12)))
@@ -66,22 +67,17 @@ func (t *RefreshingTable) Refresh() {
 }
 
 type hopStatistics struct {
-	addr    net.IP
-	sent    int
-	rcvd    int
-	latency time.Duration
+	addr net.IP
+	ping.Statistics
 }
 
 func getHopStatistics(path *discover.Path) []*hopStatistics {
 	statistics := make([]*hopStatistics, path.Len())
 	for i, hop := range path.Hops {
 		if hop != nil {
-			sent, received, latency := hop.Statistics()
 			statistics[i] = &hopStatistics{
-				addr:    hop.IP,
-				sent:    sent,
-				rcvd:    received,
-				latency: latency,
+				addr:       hop.IP,
+				Statistics: hop.Statistics(),
 			}
 		}
 	}
@@ -91,8 +87,8 @@ func getHopStatistics(path *discover.Path) []*hopStatistics {
 func getMaxLatency(hops []*hopStatistics) time.Duration {
 	var maxLatency time.Duration
 	for _, hop := range hops {
-		if hop != nil && hop.latency > maxLatency {
-			maxLatency = hop.latency
+		if hop != nil && hop.Latency > maxLatency {
+			maxLatency = hop.Latency
 		}
 	}
 	return maxLatency

@@ -1,5 +1,5 @@
-github.com/clambin/pinger v1.10.0 h1:VHce5Mg8lBip/gtdKZq/+grwBhRaASjd4CRzhnf2DDU=
-github.com/clambin/pinger v1.10.0/go.mod h1:1x5xCmn6MaiAfUHMGPL5qHC/MWPBq+A4QZCXd43EUSE=
+github.com/clambin/pinger v1.10.1 h1:+9T5LRXx+EjJY1ZgLd0o7qigpu11yOY5moy2yGxEPNM=
+github.com/clambin/pinger v1.10.1/go.mod h1:XqxlGRz0v0kY8soX1UOcvHYM31uPUGMLQg5BFZl0qL4=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc h1:U9qPSI2PIWSS1VwoXQT9A3Wy9MM3WgvqSxFWenqJduM=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/gdamore/encoding v1.0.0 h1:+7OoQ1Bc6eTm5niUzBa0Ctsh6JbMW6Ra+YNuAtDBdko=

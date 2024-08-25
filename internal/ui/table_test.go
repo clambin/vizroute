@@ -1,7 +1,9 @@
 package ui
 
 import (
-	ping2 "github.com/clambin/pinger/pkg/ping"
+	"fmt"
+	"github.com/clambin/pinger/pkg/ping"
+	"github.com/clambin/pinger/pkg/ping/icmp"
 	"github.com/clambin/vizroute/internal/discover"
 	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
@@ -28,10 +30,11 @@ func TestRefreshingTable_Refresh(t *testing.T) {
 	for range 3 {
 		path.AddHop()
 	}
-	for _, packet := range packets {
-		h := ping2.Target{IP: net.ParseIP(packet.ip)}
-		h.Sent()
-		h.Received(packet.up, packet.latency)
+	for idx, packet := range packets {
+		h := ping.Target{IP: net.ParseIP(packet.ip)}
+		h.Sent(icmp.SequenceNumber(idx + 1))
+		time.Sleep(packet.latency / 2)
+		h.Received(packet.up, icmp.SequenceNumber(idx+1))
 		path.SetHop(int(packet.hop-1), &h)
 	}
 
@@ -47,15 +50,21 @@ func TestRefreshingTable_Refresh(t *testing.T) {
 			content[r][c] = table.GetCell(r, c).Text
 		}
 	}
+	const ignoreCell = "<ignore>"
 	want := [][]string{
 		{"hop", "addr", "name", "sent", "rcvd", "latency", "", "loss", ""},
-		{"1", "192.168.0.1", "", "1", "1", "10.0ms", "|*****-----|", "0.0%", "|----------|"},
+		{"1", "192.168.0.1", "", "1", "1", ignoreCell, ignoreCell, "0.0%", "|----------|"},
 		{"2", "", "", "", "", "", "", "", ""},
-		{"3", "192.168.0.2", "", "1", "1", "20.0ms", "|**********|", "0.0%", "|----------|"},
+		{"3", "192.168.0.2", "", "1", "1", ignoreCell, ignoreCell, "0.0%", "|----------|"},
 	}
 	require.Equal(t, len(want), len(content))
-	for i, row := range content {
-		assert.Equal(t, want[i], row)
+	for r, row := range content {
+		require.Equal(t, len(want[r]), len(row))
+		for c, cell := range row {
+			if want[r][c] != ignoreCell {
+				assert.Equalf(t, want[r][c], cell, fmt.Sprintf("(row: %d, col: %d)", r, c))
+			}
+		}
 	}
 }
 
