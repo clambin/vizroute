@@ -10,7 +10,7 @@ import (
 type UI struct {
 	Root      *tview.Grid
 	LogViewer *tview.TextView
-	table     RefreshingTable
+	*RefreshingTable
 }
 
 type Application interface {
@@ -19,13 +19,10 @@ type Application interface {
 
 func New(path *discover.Path, viewLogs bool) *UI {
 	ui := UI{
-		table: RefreshingTable{
-			Table: tview.NewTable(),
-			Path:  path,
-		},
-		Root: tview.NewGrid(),
+		RefreshingTable: NewRefreshingTable("", path),
+		Root:            tview.NewGrid(),
 	}
-	ui.Root.AddItem(ui.table, 0, 0, 1, 1, 0, 0, true)
+	ui.Root.AddItem(ui.RefreshingTable, 0, 0, 1, 1, 0, 0, true)
 	if viewLogs {
 		ui.LogViewer = tview.NewTextView()
 		ui.LogViewer.SetBorder(true).SetTitle("logs").SetTitleAlign(tview.AlignLeft)
@@ -44,7 +41,7 @@ func (u *UI) Update(ctx context.Context, app Application, interval time.Duration
 			return
 		case <-ticker.C:
 			app.QueueUpdateDraw(func() {
-				u.table.Refresh()
+				u.RefreshingTable.Refresh()
 			})
 		}
 	}

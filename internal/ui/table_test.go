@@ -5,7 +5,6 @@ import (
 	"github.com/clambin/pinger/pkg/ping"
 	"github.com/clambin/pinger/pkg/ping/icmp"
 	"github.com/clambin/vizroute/internal/discover"
-	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"net"
@@ -38,7 +37,7 @@ func TestRefreshingTable_Refresh(t *testing.T) {
 		path.SetHop(int(packet.hop-1), &h)
 	}
 
-	table := RefreshingTable{Path: &path, Table: tview.NewTable()}
+	table := NewRefreshingTable("", &path)
 	table.Refresh()
 
 	rows := 1 + path.Len()
@@ -68,7 +67,7 @@ func TestRefreshingTable_Refresh(t *testing.T) {
 	}
 }
 
-func readTable(table RefreshingTable) [][]string {
+func readTable(table *RefreshingTable) [][]string {
 	rows := table.GetRowCount()
 	content := make([][]string, rows)
 	cols := table.GetColumnCount()

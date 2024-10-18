@@ -26,7 +26,7 @@ func TestUI_Update(t *testing.T) {
 	var path discover.Path
 	h := ping.Target{IP: net.ParseIP("1.1.1.1")}
 	h.Sent(1)
-	h.Received(true, 1) // TODO: flaky test: latency will be non-zero but (hopefully) rounded to zero
+	h.Received(true, 1)
 	path.AddHop()
 	path.SetHop(0, &h)
 	tui := New(&path, true)
@@ -43,7 +43,7 @@ func TestUI_Update(t *testing.T) {
 	cancel()
 	<-done
 
-	content := readTable(tui.table)
+	content := readTable(tui.RefreshingTable)
 	assert.Equal(t, [][]string{
 		{"hop", "addr", "name", "sent", "rcvd", "latency", "", "loss", ""},
 		{"1", "1.1.1.1", "one.one.one.one.", "1", "1", "0.0ms", "|**********|", "0.0%", "|----------|"},
