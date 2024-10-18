@@ -33,26 +33,34 @@ func NewRefreshingTable(target string, path *discover.Path) *RefreshingTable {
 func (t *RefreshingTable) populateTable() {
 	columns := []string{"hop", "addr", "name", "sent", "rcvd", "latency", "", "loss", ""}
 	for i, col := range columns {
-		t.SetCell(0, i, tview.NewTableCell(col).SetSelectable(false))
+		t.SetCell(0, i, headerCell(col))
 	}
 	for i, hop := range t.Path.Hops {
-		t.Table.SetCell(1+i, 0, tview.NewTableCell(strconv.Itoa(i+1)).SetAlign(tview.AlignRight)) // hop
+		t.Table.SetCell(1+i, 0, rowCell(strconv.Itoa(i+1)).SetAlign(tview.AlignRight)) // hop
 		if hop == nil {
 			continue
 		}
-		t.Table.SetCell(i+1, 1, tview.NewTableCell(hop.IP.String())) // addr
+		t.Table.SetCell(i+1, 1, rowCell(hop.IP.String())) // addr
 		ipAddresses, err := net.LookupAddr(hop.IP.String())
 		if err != nil {
 			ipAddresses = []string{""}
 		}
-		t.Table.SetCell(i+1, 2, tview.NewTableCell(ipAddresses[0]))                // name
-		t.Table.SetCell(i+1, 3, tview.NewTableCell("").SetAlign(tview.AlignRight)) // sent
-		t.Table.SetCell(i+1, 4, tview.NewTableCell("").SetAlign(tview.AlignRight)) // rcvd
-		t.Table.SetCell(i+1, 5, tview.NewTableCell("").SetAlign(tview.AlignRight)) // latency
-		t.Table.SetCell(i+1, 6, tview.NewTableCell(""))                            // latency gradient
-		t.Table.SetCell(i+1, 7, tview.NewTableCell("").SetAlign(tview.AlignRight)) // loss
-		t.Table.SetCell(i+1, 8, tview.NewTableCell(""))                            // loss gradient
+		t.Table.SetCell(i+1, 2, rowCell(ipAddresses[0]))                // name
+		t.Table.SetCell(i+1, 3, rowCell("").SetAlign(tview.AlignRight)) // sent
+		t.Table.SetCell(i+1, 4, rowCell("").SetAlign(tview.AlignRight)) // rcvd
+		t.Table.SetCell(i+1, 5, rowCell("").SetAlign(tview.AlignRight)) // latency
+		t.Table.SetCell(i+1, 6, rowCell(""))                            // latency gradient
+		t.Table.SetCell(i+1, 7, rowCell("").SetAlign(tview.AlignRight)) // loss
+		t.Table.SetCell(i+1, 8, rowCell(""))                            // loss gradient
 	}
+}
+
+func headerCell(text string) *tview.TableCell {
+	return tview.NewTableCell(text).SetTextColor(style.HeaderFgColor).SetBackgroundColor(style.HeaderBgColor).SetSelectable(false)
+}
+
+func rowCell(text string) *tview.TableCell {
+	return tview.NewTableCell(text).SetTextColor(style.CellFgColor).SetBackgroundColor(style.CellBgColor)
 }
 
 func (t *RefreshingTable) Refresh() {

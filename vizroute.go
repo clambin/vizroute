@@ -35,9 +35,10 @@ func main() {
 		_, _ = fmt.Fprintf(os.Stderr, "Usage: traceroute <host>\n")
 		os.Exit(1)
 	}
+	target := flag.Arg(0)
 
 	var p discover.Path
-	tui := ui.New(&p, *showLogs)
+	tui := ui.New(target, &p, *showLogs)
 
 	var output io.Writer = os.Stderr
 	if *showLogs {
@@ -57,7 +58,7 @@ func main() {
 	s := icmp.New(tp, l.With("socket", tp))
 	go s.Serve(ctx)
 
-	addr, err := s.Resolve(flag.Arg(0))
+	addr, err := s.Resolve(target)
 	if err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "Error resolving host %q: %s\n", flag.Arg(0), err)
 		os.Exit(1)

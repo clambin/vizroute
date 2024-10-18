@@ -17,9 +17,9 @@ type Application interface {
 	QueueUpdateDraw(func()) *tview.Application
 }
 
-func New(path *discover.Path, viewLogs bool) *UI {
+func New(target string, path *discover.Path, viewLogs bool) *UI {
 	ui := UI{
-		RefreshingTable: NewRefreshingTable("", path),
+		RefreshingTable: NewRefreshingTable(target, path),
 		Root:            tview.NewGrid(),
 	}
 	ui.Root.AddItem(ui.RefreshingTable, 0, 0, 1, 1, 0, 0, true)

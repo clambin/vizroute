@@ -29,7 +29,7 @@ func TestUI_Update(t *testing.T) {
 	h.Received(true, 1)
 	path.AddHop()
 	path.SetHop(0, &h)
-	tui := New(&path, true)
+	tui := New("1.1.1.1", &path, true)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
