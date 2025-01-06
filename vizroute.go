@@ -55,7 +55,11 @@ func main() {
 		tp = icmp.IPv6
 	}
 
-	s := icmp.New(tp, l.With("socket", tp))
+	s, err := icmp.New(tp, l.With("socket", tp))
+	if err != nil {
+		l.Error("failed to create icmp listener", "err", err)
+		os.Exit(1)
+	}
 	go s.Serve(ctx)
 
 	addr, err := s.Resolve(target)
