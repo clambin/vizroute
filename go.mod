@@ -6,7 +6,7 @@ toolchain go1.23.4
 
 require (
 	github.com/clambin/pinger v1.11.0
-	github.com/gdamore/tcell/v2 v2.8.0
+	github.com/gdamore/tcell/v2 v2.8.1
 	github.com/rivo/tview v0.0.0-20241227133733-17b7edb88c57
 	github.com/stretchr/testify v1.10.0
 	golang.org/x/net v0.34.0
