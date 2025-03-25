@@ -1,11 +1,10 @@
 module github.com/clambin/vizroute
 
 go 1.23.0
-
-toolchain go1.23.4
+toolchain go1.24.1
 
 require (
-	github.com/clambin/pinger v1.11.0
+	github.com/clambin/pinger v1.11.1
 	github.com/gdamore/tcell/v2 v2.8.1
 	github.com/rivo/tview v0.0.0-20241227133733-17b7edb88c57
 	github.com/stretchr/testify v1.10.0
