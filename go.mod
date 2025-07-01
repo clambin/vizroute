@@ -3,7 +3,7 @@ module github.com/clambin/vizroute
 go 1.24
 
 require (
-	github.com/clambin/pinger v1.11.2
+	github.com/clambin/pinger v1.11.3
 	github.com/gdamore/tcell/v2 v2.8.1
 	github.com/rivo/tview v0.0.0-20250330220935-949945f8d922
 	github.com/stretchr/testify v1.10.0
