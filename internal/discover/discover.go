@@ -3,13 +3,14 @@ package discover
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"net"
+	"sync"
+
 	"github.com/clambin/pinger/pkg/ping"
 	"github.com/clambin/pinger/pkg/ping/icmp"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
-	"log/slog"
-	"net"
-	"sync"
 )
 
 type Path struct {
