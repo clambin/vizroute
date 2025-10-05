@@ -1,12 +1,9 @@
 package tui
 
 import (
-	"fmt"
 	"io"
-	"net"
 	"time"
 
-	"codeberg.org/clambin/bubbles/frame"
 	"codeberg.org/clambin/bubbles/stream"
 	"codeberg.org/clambin/bubbles/table"
 	"github.com/charmbracelet/bubbles/help"
@@ -14,8 +11,7 @@ import (
 	"github.com/charmbracelet/bubbles/progress"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/clambin/pinger/pkg/ping"
-	"github.com/clambin/vizroute/internal/discover"
+	"github.com/clambin/vizroute/internal/tracer"
 )
 
 const refreshInterval = 250 * time.Millisecond
@@ -40,26 +36,40 @@ func refreshPathCmd(interval time.Duration) tea.Cmd {
 	})
 }
 
+type paneId int
+
+const (
+	viewPath paneId = iota
+	viewLogs
+)
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 var _ tea.Model = Controller{}
 
 // Controller is the main controller for the TUI
 type Controller struct {
-	keyMap     KeyMap
+	helpViewer help.Model
 	pathViewer tea.Model
 	logViewer  tea.Model
-	helpViewer help.Model
-	activePane int
+	keyMap     KeyMap
+	activePane paneId
 }
 
-func NewController(target string, path *discover.Path, styles table.Styles) Controller {
+var _ Tracer = (*tracer.Tracer)(nil)
+
+type Tracer interface {
+	Hops() []*tracer.HopStats
+	ResetStats()
+}
+
+func NewController(target string, trace Tracer, styles table.Styles) Controller {
 	return Controller{
 		keyMap: DefaultKeyMap(),
-		pathViewer: pathViewer{
+		pathViewer: &pathViewer{
 			target:          target,
 			table:           table.NewTable("route to "+target, columns, nil, styles, table.DefaultKeyMap()),
-			path:            path,
+			tracer:          trace,
 			latencyProgress: progress.New(progress.WithWidth(columns[5].Width-10), progress.WithoutPercentage()),
 			lossProgress:    progress.New(progress.WithWidth(columns[6].Width - 1)),
 		},
@@ -69,6 +79,11 @@ func NewController(target string, path *discover.Path, styles table.Styles) Cont
 		},
 		helpViewer: help.New(),
 	}
+}
+
+func (c Controller) WithTracer(trace Tracer) Controller {
+	c.pathViewer.(*pathViewer).tracer = trace
+	return c
 }
 
 func (c Controller) LogWriter() io.Writer {
@@ -106,6 +121,8 @@ func (c Controller) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, tea.Quit)
 		case key.Matches(msg, c.keyMap.NextPane):
 			c.activePane = (c.activePane + 1) % 2
+		case key.Matches(msg, c.keyMap.ResetStats):
+			c.pathViewer.(pathViewer).tracer.ResetStats()
 		}
 	}
 	return c, tea.Batch(cmds...)
@@ -114,12 +131,12 @@ func (c Controller) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (c Controller) View() string {
 	var body, footer string
 	switch c.activePane {
-	case 0:
+	case viewPath:
 		body = c.pathViewer.View()
 		bindings := c.keyMap.ShortHelp()
 		bindings = append(bindings, c.keyMap.TableKeys.ShortHelp()...)
 		footer = c.helpViewer.ShortHelpView(bindings)
-	case 1:
+	case viewLogs:
 		body = c.logViewer.View()
 		bindings := c.keyMap.ShortHelp()
 		bindings = append(bindings, c.keyMap.TableKeys.ShortHelp()...)
@@ -136,12 +153,13 @@ var _ help.KeyMap = KeyMap{}
 type KeyMap struct {
 	Quit       key.Binding
 	NextPane   key.Binding
+	ResetStats key.Binding
 	TableKeys  table.KeyMap
 	StreamKeys stream.KeyMap
 }
 
 func (k KeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Quit, k.NextPane}
+	return []key.Binding{k.Quit, k.NextPane, k.ResetStats}
 }
 
 func (k KeyMap) FullHelp() [][]key.Binding {
@@ -154,131 +172,8 @@ func DefaultKeyMap() KeyMap {
 	return KeyMap{
 		Quit:       key.NewBinding(key.WithKeys(tea.KeyCtrlC.String(), "q"), key.WithHelp("ctr+c/q", "quit the program")),
 		NextPane:   key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "switch between the path and logs")),
+		ResetStats: key.NewBinding(key.WithKeys("z"), key.WithHelp("z", "reset statistics")),
 		TableKeys:  table.DefaultKeyMap(),
 		StreamKeys: stream.DefaultKeyMap(),
 	}
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-var _ tea.Model = pathViewer{}
-
-// pathViewer is a table viewer for the path
-type pathViewer struct {
-	target          string
-	table           tea.Model
-	path            *discover.Path
-	latencyProgress progress.Model
-	lossProgress    progress.Model
-}
-
-func (p pathViewer) Init() tea.Cmd {
-	return refreshPathCmd(refreshInterval)
-}
-
-func (p pathViewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmd tea.Cmd
-	switch msg := msg.(type) {
-	case refreshPathMsg:
-		return p, tea.Batch(
-			p.updateTableCmd(),
-			refreshPathCmd(refreshInterval),
-		)
-	case tea.KeyMsg:
-		switch msg.String() {
-		case "ctrl+c", "esc", "q":
-			return p, tea.Quit
-		}
-	}
-	p.table, cmd = p.table.Update(msg)
-	return p, cmd
-}
-
-func (p pathViewer) updateTableCmd() tea.Cmd {
-	return func() tea.Msg {
-		return table.SetRowsMsg{Rows: p.hopsToRows()}
-	}
-}
-
-func (p pathViewer) hopsToRows() []table.Row {
-	path := p.path // TODO: this is a race condition vs. the path being updated in the discovery package
-	rows := make([]table.Row, path.Len())
-	hops := path.Hops
-	maxLatency := maxLatency(hops)
-	for i, hop := range hops {
-		if hop == nil {
-			rows[i] = table.Row{i + 1}
-			continue
-		}
-		rows[i] = p.formatRow(hop, i+1, maxLatency)
-	}
-	return rows
-}
-
-func maxLatency(hops []*ping.Target) time.Duration {
-	var maxLatency time.Duration
-	for _, hop := range hops {
-		if hop == nil {
-			continue
-		}
-		statistics := hop.Statistics()
-		if statistics.Received > 0 {
-			maxLatency = max(maxLatency, statistics.Latency)
-		}
-	}
-	return maxLatency
-}
-
-func (p pathViewer) formatRow(hop *ping.Target, c int, maxLatency time.Duration) table.Row {
-	ipAddresses, err := net.LookupAddr(hop.IP.String())
-	if err != nil {
-		ipAddresses = []string{""}
-	}
-	statistics := hop.Statistics()
-	var latency string
-	if statistics.Latency > 0 {
-		latency = p.latencyProgress.ViewAs(statistics.Latency.Seconds()/maxLatency.Seconds()) +
-			" " +
-			fmt.Sprintf("%6.1fms", statistics.Latency.Seconds()*1000)
-	}
-	var packetLoss string
-	//if statistics.Received > 0 {
-	packetLoss = p.lossProgress.ViewAs(float64(statistics.Sent-statistics.Received) / float64(statistics.Sent))
-	//}
-	return table.Row{
-		c,
-		hop.IP.String(),
-		ipAddresses[0],
-		statistics.Sent,
-		statistics.Received,
-		latency,
-		packetLoss,
-	}
-}
-
-func (p pathViewer) View() string {
-	return p.table.View()
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-var _ tea.Model = logViewer{}
-
-type logViewer struct {
-	model  tea.Model
-	styles frame.Styles
-}
-
-func (l logViewer) Init() tea.Cmd {
-	return l.model.Init()
-}
-
-func (l logViewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmd tea.Cmd
-	l.model, cmd = l.model.Update(msg)
-	return l, cmd
-}
-
-func (l logViewer) View() string {
-	return frame.Draw("logs", lipgloss.Center, l.model.View(), l.styles)
 }

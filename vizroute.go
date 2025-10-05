@@ -7,23 +7,21 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
-	"time"
 
 	"codeberg.org/clambin/bubbles/colors"
 	"codeberg.org/clambin/bubbles/frame"
 	"codeberg.org/clambin/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/clambin/pinger/pkg/ping"
-	"github.com/clambin/pinger/pkg/ping/icmp"
-	"github.com/clambin/vizroute/internal/discover"
+	"github.com/clambin/vizroute/internal/tracer"
 	"github.com/clambin/vizroute/internal/tui"
+	icmp "github.com/clambin/vizroute/ping"
 )
 
 var (
 	ipv6    = flag.Bool("6", false, "Use IPv6")
 	debug   = flag.Bool("debug", false, "Enable debug logging")
-	maxHops = flag.Int("maxhops", 20, "Maximum number of hops to try")
+	maxHops = flag.Int("maxhops", 10, "Maximum number of hops to try")
 
 	styles = table.Styles{
 		Frame: frame.Styles{
@@ -47,8 +45,7 @@ func main() {
 	}
 	target := flag.Arg(0)
 
-	var path discover.Path
-	ui := tui.NewController(target, &path, styles)
+	ui := tui.NewController(target, nil, styles)
 	var handlerOptions slog.HandlerOptions
 	if *debug {
 		handlerOptions.Level = slog.LevelDebug
@@ -60,22 +57,25 @@ func main() {
 		tp = icmp.IPv6
 	}
 
-	s, err := icmp.New(tp, l.With("socket", tp))
+	s, err := icmp.New(tp, l.With("socket", tp, "component", "icmp"))
 	if err != nil {
 		l.Error("failed to create icmp listener", "err", err)
 		os.Exit(1)
 	}
 	go s.Serve(ctx)
 
-	addr, err := s.Resolve(target)
-	if err != nil {
+	if _, err = s.Resolve(target); err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "Error resolving host %q: %s\n", flag.Arg(0), err)
 		os.Exit(1)
 	}
 
+	tr := tracer.NewTracer(s, l.With("component", "tracer"))
+	ui = ui.WithTracer(tr)
+
 	go func() {
-		if err = discover.Discover(ctx, &path, addr, s, uint8(*maxHops), l); err == nil {
-			ping.Ping(ctx, path.Hops, s, time.Second, 5*time.Second, l)
+		if err := tr.Run(ctx, target, *maxHops); err != nil {
+			l.Error("tracer failed", "err", err)
+			panic(err)
 		}
 	}()
 
@@ -83,4 +83,5 @@ func main() {
 	if _, err = a.Run(); err != nil {
 		panic(err)
 	}
+	cancel()
 }

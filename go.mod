@@ -1,13 +1,12 @@
 module github.com/clambin/vizroute
 
-go 1.24.0
+go 1.25
 
 require (
 	codeberg.org/clambin/bubbles v0.5.1
 	github.com/charmbracelet/bubbles v0.21.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
-	github.com/clambin/pinger v1.11.3
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/net v0.44.0
 )
