@@ -86,3 +86,36 @@ func TestResponse_LogValue(t *testing.T) {
 		})
 	}
 }
+
+func TestSocket_Timeout(t *testing.T) {
+	s, err := ping.New(
+		ping.WithIPv4(),
+		ping.WithTimeout(time.Second),
+		ping.WithLogger(slog.New(slog.DiscardHandler)),
+	)
+	if errors.Is(err, os.ErrPermission) {
+		t.Skip("IPv4 not supported")
+	}
+	require.NoError(t, err)
+
+	go s.Serve(t.Context())
+
+	target := net.ParseIP("127.0.0.2")
+	require.NoError(t, s.Send(target, 10, 64, []byte("payload")))
+
+	// wait for the timeout response
+	var resp ping.Response
+	require.Eventually(t, func() bool {
+		resp, err = s.Read(t.Context())
+		return err == nil
+	}, 5*time.Second, 500*time.Millisecond)
+
+	want := ping.Response{
+		ResponseType: ping.ResponseTimeout,
+		Request:      ping.Request{Target: target, Seq: 10, TTL: 64},
+	}
+	// clear TimeSent so we can compare but check it's set in the response
+	assert.NotZero(t, resp.Request.TimeSent)
+	resp.Request.TimeSent = time.Time{}
+	assert.Equal(t, want, resp)
+}

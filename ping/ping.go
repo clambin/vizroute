@@ -27,6 +27,7 @@ const (
 )
 
 var (
+	ErrTimeout     = errors.New("timeout waiting for response")
 	errIncorrectID = errors.New("packet ignored: incorrect ID")
 )
 
@@ -239,7 +240,7 @@ func (s *Socket) Read(ctx context.Context) (Response, error) {
 
 	r, err := s.q.PopWait(subCtx)
 	if err != nil {
-		return Response{}, errors.New("timeout waiting for response")
+		return Response{}, ErrTimeout
 	}
 	return r, nil
 }
@@ -377,6 +378,7 @@ func (s *Socket) timeout() {
 			s.logger.Debug("timeout expired", "seq", seq)
 			s.q.Push(Response{
 				ResponseType: ResponseTimeout,
+				Request:      req,
 			})
 			delete(s.outstandingRequests, seq)
 		}
