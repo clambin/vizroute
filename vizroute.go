@@ -14,8 +14,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/clambin/vizroute/internal/tracer"
-	"github.com/clambin/vizroute/internal/tui"
-	icmp "github.com/clambin/vizroute/ping"
+	"github.com/clambin/vizroute/internal/ui"
+	"github.com/clambin/vizroute/ping"
 )
 
 var (
@@ -45,21 +45,21 @@ func main() {
 	}
 	target := flag.Arg(0)
 
-	ui := tui.NewController(target, nil, styles)
+	tui := ui.New(target, nil, styles)
 	var handlerOptions slog.HandlerOptions
 	if *debug {
 		handlerOptions.Level = slog.LevelDebug
 	}
-	l := slog.New(slog.NewTextHandler(ui.LogWriter(), &handlerOptions))
+	logger := slog.New(slog.NewTextHandler(tui.LogWriter(), &handlerOptions))
 
-	var tp = icmp.IPv4
+	opts := []ping.SocketOption{ping.WithIPv4(), ping.WithLogger(logger.With("component", "socket"))}
 	if *ipv6 {
-		tp = icmp.IPv6
+		opts[0] = ping.WithIPv6()
 	}
 
-	s, err := icmp.New(tp, l.With("socket", tp, "component", "icmp"))
+	s, err := ping.New(opts...)
 	if err != nil {
-		l.Error("failed to create icmp listener", "err", err)
+		logger.Error("failed to create icmp listener", "err", err)
 		os.Exit(1)
 	}
 	go s.Serve(ctx)
@@ -69,17 +69,17 @@ func main() {
 		os.Exit(1)
 	}
 
-	tr := tracer.NewTracer(s, l.With("component", "tracer"))
-	ui = ui.WithTracer(tr)
+	tr := tracer.NewTracer(s, logger.With("component", "tracer"))
+	tui = tui.WithTracer(tr)
 
 	go func() {
 		if err := tr.Run(ctx, target, *maxHops); err != nil {
-			l.Error("tracer failed", "err", err)
+			logger.Error("tracer failed", "err", err)
 			panic(err)
 		}
 	}()
 
-	a := tea.NewProgram(ui, tea.WithAltScreen(), tea.WithoutCatchPanics())
+	a := tea.NewProgram(tui, tea.WithAltScreen(), tea.WithoutCatchPanics())
 	if _, err = a.Run(); err != nil {
 		panic(err)
 	}

@@ -1,4 +1,4 @@
-package tui
+package ui
 
 import (
 	"io"
@@ -45,10 +45,10 @@ const (
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-var _ tea.Model = Controller{}
+var _ tea.Model = UI{}
 
-// Controller is the main controller for the TUI
-type Controller struct {
+// UI is the main controller for the TUI
+type UI struct {
 	helpViewer help.Model
 	pathViewer tea.Model
 	logViewer  tea.Model
@@ -63,8 +63,8 @@ type Tracer interface {
 	ResetStats()
 }
 
-func NewController(target string, trace Tracer, styles table.Styles) Controller {
-	return Controller{
+func New(target string, trace Tracer, styles table.Styles) UI {
+	return UI{
 		keyMap: DefaultKeyMap(),
 		pathViewer: &pathViewer{
 			target:          target,
@@ -81,23 +81,23 @@ func NewController(target string, trace Tracer, styles table.Styles) Controller 
 	}
 }
 
-func (c Controller) WithTracer(trace Tracer) Controller {
+func (c UI) WithTracer(trace Tracer) UI {
 	c.pathViewer.(*pathViewer).tracer = trace
 	return c
 }
 
-func (c Controller) LogWriter() io.Writer {
+func (c UI) LogWriter() io.Writer {
 	return c.logViewer.(logViewer).model.(io.Writer)
 }
 
-func (c Controller) Init() tea.Cmd {
+func (c UI) Init() tea.Cmd {
 	return tea.Batch(
 		c.pathViewer.Init(),
 		c.logViewer.Init(),
 	)
 }
 
-func (c Controller) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (c UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	var cmds []tea.Cmd
 
@@ -128,7 +128,7 @@ func (c Controller) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return c, tea.Batch(cmds...)
 }
 
-func (c Controller) View() string {
+func (c UI) View() string {
 	var body, footer string
 	switch c.activePane {
 	case viewPath:

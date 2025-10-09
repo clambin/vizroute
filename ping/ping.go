@@ -1,6 +1,5 @@
-// Package ping sends and receives icmp echo request/reply packets over a UDP socket.  Both IPv4 and IPv6 are supported.
-//
-// A process using this package can only have one Socket instance.
+// Package ping sends and receives icmp echo request/reply packets over a UDP socket.
+// Both IPv4 and IPv6 are supported.
 package ping
 
 import (
@@ -21,8 +20,10 @@ import (
 )
 
 const (
+	// defaultReadTimeout is the default timeout for reading icmp packets from the socket.
+	defaultReadTimeout = 5 * time.Second
+	// timeoutInterval determines how often we check for expired outstanding requests.
 	timeoutInterval = 2 * time.Second
-	readTimeout     = 5 * time.Second
 )
 
 var (
@@ -32,12 +33,6 @@ var (
 // The nextID variable is used to generate unique IDs for icmp packets sent by each Socket instance.
 // This allows us to run multiple Socket instances in parallel without interfering with each other.
 var nextID = uint32(os.Getpid())
-
-// getNextID returns the next unique ID for icmp packets sent by the current Socket instance.
-func getNextID() uint16 {
-	id := atomic.AddUint32(&nextID, 1)
-	return uint16(id & 0xffff)
-}
 
 // Transport represents the transport protocol (IPv4 or IPv6) used by the Socket.
 type Transport int
@@ -127,7 +122,7 @@ func (rt ResponseType) String() string {
 type Socket struct {
 	v4     *icmp.PacketConn
 	v6     *icmp.PacketConn
-	q      *responseQueue
+	q      *queue[Response]
 	logger *slog.Logger
 
 	outstandingRequests map[SequenceNumber]Request
@@ -137,34 +132,53 @@ type Socket struct {
 }
 
 // New creates a new Socket instance.
-// The provided Transport parameter specifies which transport protocols to use (IPv4 or IPv6).
-// If the parameter is 0, both IPv4 and IPv6 will be used.
-// The provided logger is used to log events related to the socket.
-func New(tp Transport, l *slog.Logger) (*Socket, error) {
+func New(opts ...SocketOption) (*Socket, error) {
 	s := Socket{
-		q:                   newResponseQueue(),
-		logger:              l,
-		Timeout:             readTimeout,
-		id:                  getNextID(),
+		q:                   newQueue[Response](),
+		logger:              slog.Default(),
+		Timeout:             defaultReadTimeout,
+		id:                  uint16(atomic.AddUint32(&nextID, 1) & 0xffff),
 		outstandingRequests: make(map[SequenceNumber]Request),
 	}
-	if tp == 0 {
-		tp = IPv4 | IPv6
-	}
-	var err, errs error
-	if tp&IPv4 != 0 {
-		if s.v4, err = icmp.ListenPacket("udp4", "0.0.0.0"); err != nil {
-			s.v4 = nil
-			errs = errors.Join(errs, err)
-		}
-	}
-	if tp&IPv6 != 0 {
-		if s.v6, err = icmp.ListenPacket("udp6", "::"); err != nil {
-			s.v6 = nil
+	var errs error
+	for _, opt := range opts {
+		if err := opt(&s); err != nil {
 			errs = errors.Join(errs, err)
 		}
 	}
 	return &s, errs
+}
+
+type SocketOption func(*Socket) error
+
+func WithIPv4() SocketOption {
+	return func(s *Socket) error {
+		var err error
+		s.v4, err = icmp.ListenPacket("udp4", "0.0.0.0")
+		return err
+	}
+}
+
+func WithIPv6() SocketOption {
+	return func(s *Socket) error {
+		var err error
+		s.v6, err = icmp.ListenPacket("udp6", "::")
+		return err
+	}
+}
+
+func WithLogger(l *slog.Logger) SocketOption {
+	return func(s *Socket) error {
+		s.logger = l
+		return nil
+	}
+}
+
+func WithTimeout(d time.Duration) SocketOption {
+	return func(s *Socket) error {
+		s.Timeout = d
+		return nil
+	}
 }
 
 // Resolve resolves the provided host to an IP address and returns it.
@@ -190,35 +204,29 @@ func (s *Socket) Resolve(host string) (net.IP, error) {
 	return nil, fmt.Errorf("no valid IP support for %s", host)
 }
 
-var echoRequestTypes = map[Transport]icmp.Type{
-	IPv4: ipv4.ICMPTypeEcho,
-	IPv6: ipv6.ICMPTypeEchoRequest,
-}
-
 // Send creates an icmp packet with the provided seq, ttl and payload and sends it to the specified target.
 func (s *Socket) Send(target net.IP, seq SequenceNumber, ttl uint8, payload []byte) error {
 	// we're setting socket options, so only send one packet at a time
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
-	// get the right socket for the target's IP type (ipv4 or ipv6)
+	// get the right socket & request type for the target's IP type (ipv4 or ipv6)
 	var socket *icmp.PacketConn
-	tp := getTransport(target)
-	switch tp {
-	case IPv4:
-		//s.logger.Debug("selecting IPv4 socket")
+	var requestType icmp.Type
+	switch {
+	case target.To4() != nil:
 		socket = s.v4
-	case IPv6:
-		//s.logger.Debug("selecting IPv6 socket")
+		requestType = ipv4.ICMPTypeEcho
+	case target.To16() != nil:
 		socket = s.v6
+		requestType = ipv6.ICMPTypeEchoRequest
 	default:
-		return fmt.Errorf("socket does not support %s", tp)
+		return fmt.Errorf("unable to determine IP version for %q", target)
 	}
 
 	// create the ICMP echo Request message
 	msg := icmp.Message{
-		Type: echoRequestTypes[tp],
-		Code: 0,
+		Type: requestType,
 		Body: &icmp.Echo{
 			ID:   int(s.id),
 			Seq:  int(seq),
@@ -226,12 +234,14 @@ func (s *Socket) Send(target net.IP, seq SequenceNumber, ttl uint8, payload []by
 		},
 	}
 	data, _ := msg.Marshal(nil)
+
 	// if ttl is specified, set it on the socket
 	if ttl != 0 {
 		if err := s.setTTL(ttl); err != nil {
 			return fmt.Errorf("icmp socket failed to set ttl: %w", err)
 		}
 	}
+
 	// send the packet
 	s.logger.Debug("sending packet", "addr", target, "ttl", ttl)
 	if _, err := socket.WriteTo(data, &net.UDPAddr{IP: target}); err != nil {
@@ -248,11 +258,13 @@ func (s *Socket) Send(target net.IP, seq SequenceNumber, ttl uint8, payload []by
 	return nil
 }
 
+// Read reads the next icmp packet from the socket.
+// It blocks until a packet is received or the context is canceled.
 func (s *Socket) Read(ctx context.Context) (Response, error) {
 	subCtx, cancel := context.WithTimeout(ctx, s.Timeout)
 	defer cancel()
 
-	r, err := s.q.popWait(subCtx)
+	r, err := s.q.PopWait(subCtx)
 	if err != nil {
 		return Response{}, errors.New("timeout waiting for response")
 	}
@@ -287,13 +299,14 @@ func (s *Socket) Serve(ctx context.Context) {
 				s.logger.Debug("ignoring packet", "seq", resp.Request.Seq)
 			} else {
 				// queue for delivery by Receive and remove the outstanding packet
-				s.q.push(resp)
+				s.q.Push(resp)
 			}
 			s.lock.Unlock()
 		}
 	}
 }
 
+// readPackets reads packets from the provided socket and parses the ICMP response.
 func (s *Socket) readPackets(ctx context.Context, socket *icmp.PacketConn, tp Transport, ch chan Response) {
 	logger := s.logger.With("transport", tp)
 	for {
@@ -350,6 +363,7 @@ func (s *Socket) readPacket(socket *icmp.PacketConn, tp Transport) (Response, er
 	}
 
 	// if the packet is not for our id, drop it
+	// TODO: should we make this an option? pinger runs in a container and doesn't seem to receive the right ID?
 	if msgID != int(s.id) {
 		return Response{}, errIncorrectID
 	}
@@ -378,7 +392,7 @@ func (s *Socket) timeout() {
 	for seq, req := range s.outstandingRequests {
 		if time.Since(req.TimeSent) > s.Timeout {
 			s.logger.Debug("timeout expired", "seq", seq)
-			s.q.push(Response{
+			s.q.Push(Response{
 				ResponseType: ResponseTimeout,
 			})
 			delete(s.outstandingRequests, seq)
@@ -408,61 +422,7 @@ func getTransport(ip net.IP) Transport {
 	return 0
 }
 
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-type responseQueue struct {
-	notEmpty sync.Cond
-	queue    []Response
-	lock     sync.Mutex
-}
-
-func newResponseQueue() *responseQueue {
-	q := &responseQueue{}
-	q.notEmpty.L = &q.lock
-	return q
-}
-
-func (q *responseQueue) push(r Response) {
-	q.lock.Lock()
-	defer q.lock.Unlock()
-	q.queue = append(q.queue, r)
-	q.notEmpty.Broadcast()
-}
-
-func (q *responseQueue) pop() (Response, bool) {
-	q.lock.Lock()
-	defer q.lock.Unlock()
-	if len(q.queue) == 0 {
-		return Response{}, false
-	}
-	r := q.queue[0]
-	q.queue = q.queue[1:]
-	return r, true
-}
-
-func (q *responseQueue) popWait(ctx context.Context) (Response, error) {
-	for {
-		if resp, ok := q.pop(); ok {
-			return resp, nil
-		}
-		notEmpty := make(chan struct{})
-		go func() {
-			q.lock.Lock()
-			q.notEmpty.Wait()
-			q.lock.Unlock()
-			notEmpty <- struct{}{}
-		}()
-		select {
-		case <-ctx.Done():
-			return Response{}, ctx.Err()
-		case <-notEmpty:
-		}
-	}
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-// parseTimeExceeded extracts Echo ID and Seq from inner ICMP packet
+// parseTimeExceeded extracts Echo ID and Seq from the inner ICMP packet
 // Supports both IPv4 and IPv6 TimeExceeded messages
 func parseTimeExceeded(data []byte, src net.IP) (id int, seq SequenceNumber, err error) {
 	if src.To4() != nil {
