@@ -34,36 +34,6 @@ var (
 // This allows us to run multiple Socket instances in parallel without interfering with each other.
 var nextID = uint32(os.Getpid())
 
-// Transport represents the transport protocol (IPv4 or IPv6) used by the Socket.
-type Transport int
-
-const (
-	IPv4 Transport = 0x01
-	IPv6 Transport = 0x02
-)
-
-func (tp Transport) String() string {
-	switch tp {
-	case IPv4:
-		return "ipv4"
-	case IPv6:
-		return "ipv6"
-	default:
-		return "unknown"
-	}
-}
-
-func (tp Transport) Protocol() int {
-	switch tp {
-	case IPv4:
-		return 1
-	case IPv6:
-		return 58
-	default:
-		return -1
-	}
-}
-
 // SequenceNumber represents the sequence number of an icmp packet.
 type SequenceNumber uint16
 
@@ -190,18 +160,21 @@ func (s *Socket) Resolve(host string) (net.IP, error) {
 		return nil, fmt.Errorf("failed to resolve %s: %w", host, err)
 	}
 
-	s.logger.Debug("resolved host", "host", host, "ips", len(ips))
-
 	for _, ip := range ips {
-		tp := getTransport(ip)
-		s.logger.Debug("examining IP", "ip", ip, "tp", int(tp), "tps", tp, "s.v4", s.v4 != nil, "s.v6", s.v6 != nil)
-		if (tp == IPv6 && s.v6 != nil) || tp == IPv4 && s.v4 != nil {
-			s.logger.Debug("resolved IP", "ip", ip, "tp", tp)
-			return ip, nil
+		s.logger.Debug("examining IP", "ip", ip, "s.v4", s.v4 != nil, "s.v6", s.v6 != nil)
+		switch {
+		// order is important here: ip.To16 returns an IPv4 address if ip is an IPv4 address
+		case ip.To4() != nil:
+			if s.v4 != nil {
+				return ip, nil
+			}
+		case ip.To16() != nil:
+			if s.v6 != nil {
+				return ip, nil
+			}
 		}
 	}
-	s.logger.Debug("no matching IP found")
-	return nil, fmt.Errorf("no valid IP support for %s", host)
+	return nil, fmt.Errorf("no IP support for %s", host)
 }
 
 // Send creates an icmp packet with the provided seq, ttl and payload and sends it to the specified target.
@@ -277,10 +250,10 @@ func (s *Socket) Read(ctx context.Context) (Response, error) {
 func (s *Socket) Serve(ctx context.Context) {
 	ch := make(chan Response)
 	if s.v4 != nil {
-		go s.readPackets(ctx, s.v4, IPv4, ch)
+		go s.readPackets(ctx, s.v4, "IPv4", ch)
 	}
 	if s.v6 != nil {
-		go s.readPackets(ctx, s.v6, IPv6, ch)
+		go s.readPackets(ctx, s.v6, "IPv6", ch)
 	}
 	timeoutTicker := time.NewTicker(timeoutInterval)
 	defer timeoutTicker.Stop()
@@ -307,14 +280,14 @@ func (s *Socket) Serve(ctx context.Context) {
 }
 
 // readPackets reads packets from the provided socket and parses the ICMP response.
-func (s *Socket) readPackets(ctx context.Context, socket *icmp.PacketConn, tp Transport, ch chan Response) {
+func (s *Socket) readPackets(ctx context.Context, socket *icmp.PacketConn, tp string, ch chan Response) {
 	logger := s.logger.With("transport", tp)
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		default:
-			response, err := s.readPacket(socket, tp)
+			response, err := s.readPacket(socket)
 			if errors.Is(err, errIncorrectID) {
 				logger.Debug("ignoring received packet", "err", err)
 				continue
@@ -328,7 +301,7 @@ func (s *Socket) readPackets(ctx context.Context, socket *icmp.PacketConn, tp Tr
 	}
 }
 
-func (s *Socket) readPacket(socket *icmp.PacketConn, tp Transport) (Response, error) {
+func (s *Socket) readPacket(socket *icmp.PacketConn) (Response, error) {
 	if err := socket.SetReadDeadline(time.Now().Add(s.Timeout)); err != nil {
 		return Response{}, fmt.Errorf("failed to set deadline: %w", err)
 	}
@@ -339,11 +312,21 @@ func (s *Socket) readPacket(socket *icmp.PacketConn, tp Transport) (Response, er
 		return Response{}, fmt.Errorf("read: %w", err)
 	}
 
+	var protocol int
+	switch {
+	case socket.IPv6PacketConn() != nil:
+		protocol = 58
+	case socket.IPv4PacketConn() != nil:
+		protocol = 1
+	default:
+		return Response{}, fmt.Errorf("unknown IP version")
+	}
+
 	var msgID int
 	var respType ResponseType
 	var seq SequenceNumber
 
-	resp, err := icmp.ParseMessage(tp.Protocol(), buff[:n])
+	resp, err := icmp.ParseMessage(protocol, buff[:n])
 	if err != nil {
 		return Response{}, fmt.Errorf("parse: %w", err)
 	}
@@ -411,17 +394,6 @@ func (s *Socket) setTTL(ttl uint8) (err error) {
 	return err
 }
 
-// getTransport returns the Transport for the provided IP address (ipv4 or ipv6).
-func getTransport(ip net.IP) Transport {
-	if ip.To4() != nil {
-		return IPv4
-	}
-	if ip.To16() != nil {
-		return IPv6
-	}
-	return 0
-}
-
 // parseTimeExceeded extracts Echo ID and Seq from the inner ICMP packet
 // Supports both IPv4 and IPv6 TimeExceeded messages
 func parseTimeExceeded(data []byte, src net.IP) (id int, seq SequenceNumber, err error) {
@@ -450,7 +422,7 @@ func parseTimeExceededV6(data []byte) (id int, seq SequenceNumber, err error) {
 		return 0, 0, errors.New("IPv6 payload too short")
 	}
 	inner := data[ipv6.HeaderLen:]
-	m, err := icmp.ParseMessage(IPv6.Protocol(), inner)
+	m, err := icmp.ParseMessage(58, inner)
 	if err != nil {
 		return 0, 0, err
 	}
