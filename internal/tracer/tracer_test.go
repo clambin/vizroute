@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/clambin/vizroute/ping"
+	"github.com/clambin/pinger/ping"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

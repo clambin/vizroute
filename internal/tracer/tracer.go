@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/clambin/vizroute/ping"
+	"github.com/clambin/pinger/ping"
 )
 
 // Socket interface for sending/receiving ICMP packets
