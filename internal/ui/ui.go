@@ -50,8 +50,8 @@ var _ tea.Model = UI{}
 // UI is the main controller for the TUI
 type UI struct {
 	helpViewer help.Model
-	pathViewer tea.Model
-	logViewer  tea.Model
+	pathViewer pathViewer
+	logViewer  logViewer
 	keyMap     KeyMap
 	activePane paneId
 }
@@ -66,7 +66,7 @@ type Tracer interface {
 func New(target string, trace Tracer, styles table.Styles) UI {
 	return UI{
 		keyMap: DefaultKeyMap(),
-		pathViewer: &pathViewer{
+		pathViewer: pathViewer{
 			target:          target,
 			table:           table.NewTable("route to "+target, columns, nil, styles, table.DefaultKeyMap()),
 			tracer:          trace,
@@ -74,7 +74,7 @@ func New(target string, trace Tracer, styles table.Styles) UI {
 			lossProgress:    progress.New(progress.WithWidth(columns[6].Width - 1)),
 		},
 		logViewer: logViewer{
-			model:  stream.NewStream(80, 25, stream.WithShowToggles(true)),
+			stream: stream.NewStream(80, 25, stream.WithShowToggles(true)),
 			styles: styles.Frame,
 		},
 		helpViewer: help.New(),
@@ -82,12 +82,12 @@ func New(target string, trace Tracer, styles table.Styles) UI {
 }
 
 func (c UI) WithTracer(trace Tracer) UI {
-	c.pathViewer.(*pathViewer).tracer = trace
+	c.pathViewer.tracer = trace
 	return c
 }
 
 func (c UI) LogWriter() io.Writer {
-	return c.logViewer.(logViewer).model.(io.Writer)
+	return c.logViewer.stream
 }
 
 func (c UI) Init() tea.Cmd {
@@ -110,10 +110,9 @@ func (c UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		c.helpViewer.Width = msg.Width
 		helpHeight := lipgloss.Height(c.helpViewer.ShortHelpView(c.keyMap.ShortHelp()))
-		c.pathViewer, cmd = c.pathViewer.Update(table.SetSizeMsg{Width: msg.Width, Height: msg.Height - helpHeight})
-		cmds = append(cmds, cmd)
-		borderWidth, borderHeight := c.logViewer.(logViewer).styles.BorderSize()
-		c.logViewer, cmd = c.logViewer.Update(stream.SetSizeMsg{Width: msg.Width - borderWidth, Height: msg.Height - helpHeight - borderHeight})
+		c.pathViewer.table.SetSize(msg.Width, msg.Height-helpHeight)
+		borderWidth, borderHeight := c.logViewer.styles.BorderSize()
+		c.logViewer.stream.SetSize(msg.Width-borderWidth, msg.Height-helpHeight-borderHeight)
 		cmds = append(cmds, cmd)
 	case tea.KeyMsg:
 		switch {
@@ -122,7 +121,7 @@ func (c UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, c.keyMap.NextPane):
 			c.activePane = (c.activePane + 1) % 2
 		case key.Matches(msg, c.keyMap.ResetStats):
-			c.pathViewer.(pathViewer).tracer.ResetStats()
+			c.pathViewer.tracer.ResetStats()
 		}
 	}
 	return c, tea.Batch(cmds...)

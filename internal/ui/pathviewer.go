@@ -10,12 +10,10 @@ import (
 	"github.com/clambin/vizroute/internal/tracer"
 )
 
-var _ tea.Model = pathViewer{}
-
 // pathViewer is a table viewer for the path
 type pathViewer struct {
 	target          string
-	table           tea.Model
+	table           *table.Table
 	tracer          Tracer
 	latencyProgress progress.Model
 	lossProgress    progress.Model
@@ -25,28 +23,19 @@ func (p pathViewer) Init() tea.Cmd {
 	return refreshPathCmd(refreshInterval)
 }
 
-func (p pathViewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmd tea.Cmd
+func (p pathViewer) Update(msg tea.Msg) (pathViewer, tea.Cmd) {
 	switch msg := msg.(type) {
 	case refreshPathMsg:
-		return p, tea.Batch(
-			p.updateTableCmd(),
-			refreshPathCmd(refreshInterval),
-		)
+		p.table.SetRows(p.hopsToRows())
+		return p, refreshPathCmd(refreshInterval)
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "esc", "q":
 			return p, tea.Quit
 		}
 	}
-	p.table, cmd = p.table.Update(msg)
+	cmd := p.table.Update(msg)
 	return p, cmd
-}
-
-func (p pathViewer) updateTableCmd() tea.Cmd {
-	return func() tea.Msg {
-		return table.SetRowsMsg{Rows: p.hopsToRows()}
-	}
 }
 
 func (p pathViewer) hopsToRows() []table.Row {
@@ -100,5 +89,3 @@ func (p pathViewer) formatRow(hop *tracer.HopStats, c int, maxLatency time.Durat
 func (p pathViewer) View() string {
 	return p.table.View()
 }
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
