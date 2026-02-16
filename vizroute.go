@@ -9,7 +9,6 @@ import (
 	"os/signal"
 
 	"codeberg.org/clambin/bubbles/colors"
-	"codeberg.org/clambin/bubbles/frame"
 	"codeberg.org/clambin/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -24,10 +23,6 @@ var (
 	maxHops = flag.Int("maxhops", 10, "Maximum number of hops to try")
 
 	styles = table.Styles{
-		Frame: frame.Styles{
-			Title:  lipgloss.NewStyle().Foreground(colors.Green),
-			Border: lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(colors.Blue),
-		},
 		Header: lipgloss.NewStyle().Foreground(colors.Blue),
 		//Selected: lipgloss.NewStyle().Foreground(colors.Black).Background(colors.Blue),
 		//Cell:     lipgloss.NewStyle(),

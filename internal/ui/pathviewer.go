@@ -10,23 +10,27 @@ import (
 	"github.com/clambin/vizroute/internal/tracer"
 )
 
+var _ tea.Model = pathViewer{}
+
 // pathViewer is a table viewer for the path
 type pathViewer struct {
-	target          string
-	table           *table.Table
+	tea.Model
 	tracer          Tracer
 	latencyProgress progress.Model
 	lossProgress    progress.Model
 }
 
 func (p pathViewer) Init() tea.Cmd {
-	return refreshPathCmd(refreshInterval)
+	return tea.Batch(
+		p.Model.Init(),
+		refreshPathCmd(refreshInterval),
+	)
 }
 
-func (p pathViewer) Update(msg tea.Msg) (pathViewer, tea.Cmd) {
+func (p pathViewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case refreshPathMsg:
-		p.table.SetRows(p.hopsToRows())
+		p.Model = p.Model.(table.Table).Rows(p.hopsToRows())
 		return p, refreshPathCmd(refreshInterval)
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -34,8 +38,14 @@ func (p pathViewer) Update(msg tea.Msg) (pathViewer, tea.Cmd) {
 			return p, tea.Quit
 		}
 	}
-	cmd := p.table.Update(msg)
+	var cmd tea.Cmd
+	p.Model, cmd = p.Model.(table.Table).Update(msg)
 	return p, cmd
+}
+
+func (p pathViewer) Size(width, height int) pathViewer {
+	p.Model = p.Model.(table.Table).Size(width, height)
+	return p
 }
 
 func (p pathViewer) hopsToRows() []table.Row {
@@ -84,8 +94,4 @@ func (p pathViewer) formatRow(hop *tracer.HopStats, c int, maxLatency time.Durat
 		latency,
 		packetLoss,
 	}
-}
-
-func (p pathViewer) View() string {
-	return p.table.View()
 }

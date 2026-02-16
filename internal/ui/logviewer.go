@@ -1,26 +1,25 @@
 package ui
 
 import (
-	"codeberg.org/clambin/bubbles/frame"
 	"codeberg.org/clambin/bubbles/stream"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
 
+var _ tea.Model = logViewer{}
+
 type logViewer struct {
-	stream *stream.Stream
-	styles frame.Styles
+	tea.Model
 }
 
-func (l logViewer) Init() tea.Cmd {
-	return l.stream.Init()
-}
-
-func (l logViewer) Update(msg tea.Msg) (logViewer, tea.Cmd) {
-	cmd := l.stream.Update(msg)
+// Update is needed here: otherwise the call in UI.Update() calls Stream's Update() method directly,
+// which returns a Stream instead of a logViewer and store that in UI.panes.  UI.resize() will then panic.
+func (l logViewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+	l.Model, cmd = l.Model.Update(msg)
 	return l, cmd
 }
 
-func (l logViewer) View() string {
-	return frame.Draw("logs", lipgloss.Center, l.stream.View(), l.styles)
+func (l logViewer) Size(width, height int) logViewer {
+	l.Model = l.Model.(stream.Stream).Size(width, height)
+	return l
 }
