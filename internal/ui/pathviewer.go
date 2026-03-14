@@ -4,33 +4,31 @@ import (
 	"fmt"
 	"time"
 
+	"charm.land/bubbles/v2/progress"
+	tea "charm.land/bubbletea/v2"
 	"codeberg.org/clambin/bubbles/table"
-	"github.com/charmbracelet/bubbles/progress"
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/clambin/vizroute/internal/tracer"
 )
 
-var _ tea.Model = pathViewer{}
-
 // pathViewer is a table viewer for the path
 type pathViewer struct {
-	tea.Model
-	tracer          Tracer
 	latencyProgress progress.Model
 	lossProgress    progress.Model
+	tracer          Tracer
+	table.Table
 }
 
 func (p pathViewer) Init() tea.Cmd {
 	return tea.Batch(
-		p.Model.Init(),
+		p.Table.Init(),
 		refreshPathCmd(refreshInterval),
 	)
 }
 
-func (p pathViewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (p pathViewer) Update(msg tea.Msg) (pathViewer, tea.Cmd) {
 	switch msg := msg.(type) {
 	case refreshPathMsg:
-		p.Model = p.Model.(table.Table).Rows(p.hopsToRows())
+		p.Table = p.Rows(p.hopsToRows())
 		return p, refreshPathCmd(refreshInterval)
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -39,12 +37,12 @@ func (p pathViewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 	var cmd tea.Cmd
-	p.Model, cmd = p.Model.(table.Table).Update(msg)
+	p.Table, cmd = p.Table.Update(msg)
 	return p, cmd
 }
 
 func (p pathViewer) Size(width, height int) pathViewer {
-	p.Model = p.Model.(table.Table).Size(width, height)
+	p.Table = p.Table.Size(width, height)
 	return p
 }
 

@@ -8,10 +8,10 @@ import (
 	"os"
 	"os/signal"
 
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"codeberg.org/clambin/bubbles/colors"
 	"codeberg.org/clambin/bubbles/table"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/clambin/pinger/ping"
 	"github.com/clambin/vizroute/internal/tracer"
 	"github.com/clambin/vizroute/internal/ui"
@@ -74,7 +74,7 @@ func main() {
 		}
 	}()
 
-	a := tea.NewProgram(tui, tea.WithAltScreen(), tea.WithoutCatchPanics())
+	a := tea.NewProgram(tui)
 	if _, err = a.Run(); err != nil {
 		panic(err)
 	}

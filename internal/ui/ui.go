@@ -4,15 +4,16 @@ import (
 	"io"
 	"time"
 
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/progress"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+
 	"codeberg.org/clambin/bubbles/colors"
 	"codeberg.org/clambin/bubbles/frame"
 	"codeberg.org/clambin/bubbles/stream"
 	"codeberg.org/clambin/bubbles/table"
-	"github.com/charmbracelet/bubbles/help"
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/progress"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/clambin/vizroute/internal/tracer"
 )
 
@@ -33,6 +34,8 @@ var (
 		Title:  lipgloss.NewStyle().Foreground(colors.Green).Bold(true),
 		Border: lipgloss.NewStyle().BorderForeground(colors.Blue).BorderStyle(lipgloss.RoundedBorder()),
 	}
+
+	helpStyle = lipgloss.NewStyle().Foreground(colors.DarkOrange3).Italic(true)
 )
 
 type refreshPathMsg struct{}
@@ -63,40 +66,52 @@ var _ tea.Model = UI{}
 
 // UI is the main controller for the TUI
 type UI struct {
-	activePane paneId
-	pathPane   tea.Model
-	logsPane   tea.Model
+	pathPane pathViewer
 
 	helpViewer help.Model
-	keyMap     KeyMap
 	target     string
+	keyMap     KeyMap
+	logsPane   logViewer
+
+	activePane paneId
 }
 
 func New(target string, trace Tracer, styles table.Styles) UI {
+	helpViewer := help.New()
+	helpViewer.Styles = help.Styles{
+		ShortDesc: helpStyle,
+		ShortKey:  helpStyle.Bold(true),
+	}
 	return UI{
 		pathPane: pathViewer{
-			Model:           table.New().Columns(columns).Styles(styles),
-			tracer:          trace,
-			latencyProgress: progress.New(progress.WithWidth(columns[5].Width-10), progress.WithoutPercentage()),
-			lossProgress:    progress.New(progress.WithWidth(columns[6].Width - 1)),
+			Table:  table.New().Columns(columns).Styles(styles),
+			tracer: trace,
+			latencyProgress: progress.New(
+				progress.WithWidth(columns[5].Width-10),
+				progress.WithoutPercentage(),
+				progress.WithDefaultBlend(),
+			),
+			lossProgress: progress.New(
+				progress.WithWidth(columns[6].Width-1),
+				progress.WithDefaultBlend(),
+			),
 		},
-		logsPane: logViewer{Model: stream.New(stream.WithShowToggles(true))},
-
+		logsPane: logViewer{
+			Stream: stream.New(stream.WithShowToggles(true)),
+		},
 		keyMap:     DefaultKeyMap(),
-		helpViewer: help.New(),
+		helpViewer: helpViewer,
 		target:     target,
 	}
 }
 
 func (c UI) WithTracer(trace Tracer) UI {
-	var p = c.pathPane.(pathViewer)
-	p.tracer = trace
-	c.pathPane = p
+	c.pathPane.tracer = trace
 	return c
 }
 
 func (c UI) LogWriter() io.Writer {
-	return c.logsPane.(logViewer).Model.(io.Writer)
+	return c.logsPane.Stream
 }
 
 func (c UI) Init() tea.Cmd {
@@ -110,7 +125,7 @@ func (c UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		return c.resize(msg.Width, msg.Height), nil
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch {
 		case key.Matches(msg, c.keyMap.Quit):
 			return c, tea.Quit
@@ -118,7 +133,7 @@ func (c UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			c.activePane = (c.activePane + 1) % 2
 			return c, nil
 		case key.Matches(msg, c.keyMap.ResetStats):
-			c.pathPane.(pathViewer).tracer.ResetStats()
+			c.pathPane.tracer.ResetStats()
 			return c, nil
 		default:
 			var cmd tea.Cmd
@@ -141,29 +156,32 @@ func (c UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 }
 
-func (c UI) View() string {
-	var v string
+func (c UI) View() tea.View {
+	var content string
 	switch c.activePane {
 	case viewPath:
-		v = c.pathPane.View()
+		content = c.pathPane.View()
 	case viewLogs:
-		v = c.logsPane.View()
+		content = c.logsPane.View()
 	}
-	return lipgloss.JoinVertical(lipgloss.Top,
-		frame.Draw(c.target, lipgloss.Center, v, frameStyle),
+
+	v := tea.NewView(lipgloss.JoinVertical(lipgloss.Top,
+		frame.Render(c.target, lipgloss.Center, frameStyle, content),
 		c.helpViewer.ShortHelpView(c.activeBindings()),
-	)
+	))
+	v.AltScreen = true
+	return v
 }
 
 func (c UI) resize(width, height int) UI {
-	c.helpViewer.Width = width
+	c.helpViewer.SetWidth(width)
 	helpHeight := lipgloss.Height(c.helpViewer.ShortHelpView(c.keyMap.ShortHelp()))
 
 	width -= frameStyle.Border.GetHorizontalBorderSize()
 	height -= frameStyle.Border.GetVerticalBorderSize() + helpHeight
 
-	c.pathPane = c.pathPane.(pathViewer).Size(width, height)
-	c.logsPane = c.logsPane.(logViewer).Size(width, height)
+	c.pathPane = c.pathPane.Size(width, height)
+	c.logsPane = c.logsPane.Size(width, height)
 	return c
 }
 
@@ -203,7 +221,7 @@ func (k KeyMap) FullHelp() [][]key.Binding {
 
 func DefaultKeyMap() KeyMap {
 	return KeyMap{
-		Quit:       key.NewBinding(key.WithKeys(tea.KeyCtrlC.String(), "q"), key.WithHelp("ctr+c/q", "quit the program")),
+		Quit:       key.NewBinding(key.WithKeys("ctrl+c", "q"), key.WithHelp("ctr+c/q", "quit the program")),
 		NextPane:   key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "switch between the path and logs")),
 		ResetStats: key.NewBinding(key.WithKeys("z"), key.WithHelp("z", "reset statistics")),
 		TableKeys:  table.DefaultKeyMap(),

@@ -40,7 +40,7 @@ func NewTracer(sock Socket, logger *slog.Logger) *Tracer {
 	}
 }
 
-// Hops returns a snapshot of hop stats in TTL order
+// The Hops method returns a snapshot of hop stats in TTL order
 func (t *Tracer) Hops() []*HopStats {
 	t.mu.Lock()
 	defer t.mu.Unlock()
