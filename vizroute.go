@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -40,12 +41,12 @@ func main() {
 	}
 	target := flag.Arg(0)
 
-	tui := ui.New(target, nil, styles)
+	r, w := io.Pipe()
 	var handlerOptions slog.HandlerOptions
 	if *debug {
 		handlerOptions.Level = slog.LevelDebug
 	}
-	logger := slog.New(slog.NewTextHandler(tui.LogWriter(), &handlerOptions))
+	logger := slog.New(slog.NewTextHandler(w, &handlerOptions))
 
 	opts := []ping.SocketOption{ping.WithIPv4(), ping.WithLogger(logger.With("component", "socket"))}
 	if *ipv6 {
@@ -65,8 +66,6 @@ func main() {
 	}
 
 	tr := tracer.NewTracer(s, logger.With("component", "tracer"))
-	tui = tui.WithTracer(tr)
-
 	go func() {
 		if err := tr.Run(ctx, target, *maxHops); err != nil {
 			logger.Error("tracer failed", "err", err)
@@ -74,7 +73,7 @@ func main() {
 		}
 	}()
 
-	a := tea.NewProgram(tui)
+	a := tea.NewProgram(ui.New(target, tr, styles, r))
 	if _, err = a.Run(); err != nil {
 		panic(err)
 	}

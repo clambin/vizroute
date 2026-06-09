@@ -76,7 +76,7 @@ type UI struct {
 	activePane paneId
 }
 
-func New(target string, trace Tracer, styles table.Styles) UI {
+func New(target string, trace Tracer, styles table.Styles, r io.Reader) UI {
 	helpViewer := help.New()
 	helpViewer.Styles = help.Styles{
 		ShortDesc: helpStyle,
@@ -97,7 +97,7 @@ func New(target string, trace Tracer, styles table.Styles) UI {
 			),
 		},
 		logsPane: logViewer{
-			Stream: stream.New(stream.WithShowToggles(true)),
+			Model: stream.New(r, stream.WithShowToggles(true)),
 		},
 		keyMap:     DefaultKeyMap(),
 		helpViewer: helpViewer,
@@ -108,10 +108,6 @@ func New(target string, trace Tracer, styles table.Styles) UI {
 func (c UI) WithTracer(trace Tracer) UI {
 	c.pathPane.tracer = trace
 	return c
-}
-
-func (c UI) LogWriter() io.Writer {
-	return c.logsPane.Stream
 }
 
 func (c UI) Init() tea.Cmd {

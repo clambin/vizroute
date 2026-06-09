@@ -6,16 +6,16 @@ import (
 )
 
 type logViewer struct {
-	stream.Stream
+	stream.Model
 }
 
 func (l logViewer) Update(msg tea.Msg) (logViewer, tea.Cmd) {
 	var cmd tea.Cmd
-	l.Stream, cmd = l.Stream.Update(msg)
+	l.Model, cmd = l.Model.Update(msg)
 	return l, cmd
 }
 
 func (l logViewer) Size(width, height int) logViewer {
-	l.Stream = l.Stream.Size(width, height)
+	l.Model = l.Model.SetSize(width, height)
 	return l
 }

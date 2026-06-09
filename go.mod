@@ -6,7 +6,7 @@ require (
 	charm.land/bubbles/v2 v2.1.0
 	charm.land/bubbletea/v2 v2.0.7
 	charm.land/lipgloss/v2 v2.0.3
-	codeberg.org/clambin/bubbles v0.10.0
+	codeberg.org/clambin/bubbles v0.12.1
 	github.com/clambin/pinger v1.12.0
 	github.com/stretchr/testify v1.11.1
 )
