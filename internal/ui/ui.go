@@ -66,12 +66,12 @@ var _ tea.Model = UI{}
 
 // UI is the main controller for the TUI
 type UI struct {
-	pathPane pathViewer
-
 	helpViewer help.Model
 	target     string
-	keyMap     KeyMap
 	logsPane   logViewer
+
+	keyMap   KeyMap
+	pathPane pathViewer
 
 	activePane paneId
 }

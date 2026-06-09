@@ -16,6 +16,6 @@ func (l logViewer) Update(msg tea.Msg) (logViewer, tea.Cmd) {
 }
 
 func (l logViewer) Size(width, height int) logViewer {
-	l.Model = l.Model.SetSize(width, height)
+	l.Model = l.SetSize(width, height)
 	return l
 }
